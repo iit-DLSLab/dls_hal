@@ -44,6 +44,13 @@ int main(int argc, char **argv) {
 
     // computeCommands should not throw
     iface.computeCommands();
+
+    // test emergency stop
+    iface.getLowLevelControl().control_mode = QuadrupedLowLevelControl::CONTROL_MODE::POSITION_CONTROL;
+    iface.getLowLevelControl().commands.position[0] = 1.0;
+    iface.getLimits().position_min[0] = 0.0;
+    iface.computeCommands();
+    assert(iface.getLowLevelControl().commands.position[0] == 0.0);
     std::cout << "All tests passed.\n";
     return 0;
 }

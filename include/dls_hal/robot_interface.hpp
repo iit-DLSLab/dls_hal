@@ -33,7 +33,7 @@ public:
     }
 
     // function initialization
-    bool init(YAML::Node& config){
+    bool init(const YAML::Node& config){
         state.init(config);
         ref.init(config);
         limits.init(config);
@@ -42,22 +42,22 @@ public:
         return true;
     }
 
-    void initReferences(TRef& ref){
+    void initReferences(const TRef& ref){
         this->ref = ref;
     }
 
-    void setReference(TRef& ref){
+    void setReference(const TRef& ref){
         this->ref = ref;
         safety.checkReference(ref, limits);
     }
 
-    void setState(TState& state){
+    void setState(const TState& state){
         this->state = state;
         // check safety conditions based on the new state
         safety.checkState(state, limits);
     }
 
-    void setLimits(TLimits& limits){
+    void setLimits(const TLimits& limits){
         this->limits = limits;
     }
 

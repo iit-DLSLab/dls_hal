@@ -9,7 +9,7 @@ class RobotState{
 public:
     RobotState();
 
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
 
     std::vector<double> joints_position;
     std::vector<double> joints_velocity;
@@ -23,7 +23,7 @@ public:
 class RobotCommands{
 public:
     RobotCommands();
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
     std::vector<double> position;
     std::vector<double> velocity;
     std::vector<double> torque;
@@ -32,7 +32,7 @@ public:
 class RobotRef{
 public:
     RobotRef();
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
     std::vector<double> position;
     std::vector<double> velocity;
     std::vector<double> torque;
@@ -41,7 +41,7 @@ public:
 class RobotLimits{
 public:
     RobotLimits();
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
     std::vector<double> position_min;
     std::vector<double> position_max;
     std::vector<double> velocity_max;
@@ -54,14 +54,14 @@ class RobotSafety{
 public:
     RobotSafety();
     
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
 
     bool e_stop_triggered;
     
     virtual void eSTOP(TCommands& commands);
-    virtual bool checkState(TState state, TLimits limits);
-    virtual bool checkReference(TRef ref, TLimits limits);
-    virtual bool checkCommands(TCommands commands, TLimits limits);
+    virtual bool checkState(const TState& state, const TLimits& limits);
+    virtual bool checkReference(const TRef& ref, const TLimits& limits);
+    virtual bool checkCommands(const TCommands& commands, const TLimits& limits);
 };
 
 template <typename TState, typename TRef, typename TCommands>
@@ -77,9 +77,9 @@ public:
 
     RobotLowLevelControl();
 
-    void init(YAML::Node& config);
+    void init(const YAML::Node& config);
 
-    void computeCommands(TState state, TRef ref);
+    void computeCommands(const TState& state, const TRef& ref);
 
     void positionControl();
     void velocityControl();

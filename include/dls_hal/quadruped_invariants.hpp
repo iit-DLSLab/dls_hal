@@ -17,9 +17,8 @@ class QuadrupedLimits : public RobotLimits{};
 
 class QuadrupedSafety : public RobotSafety<QuadrupedState, QuadrupedRef, QuadrupedCommands, QuadrupedLimits>{
 public:
-    bool checkState(QuadrupedState state, QuadrupedLimits limits) override{
+    bool checkState(const QuadrupedState& state, const QuadrupedLimits& limits) override{
         RobotSafety<QuadrupedState, QuadrupedRef, QuadrupedCommands, QuadrupedLimits>::checkState(state, limits);
-        std::cout << "Checking quadruped state against limits..." << std::endl;
         return true;
     }
 };

@@ -5,7 +5,7 @@
 // RobotState
 RobotState::RobotState() {}
 
-void RobotState::init(YAML::Node& config){
+void RobotState::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
     motor_status_word.resize(num_joints, 0);
     joints_position.resize(num_joints, 0.0);
@@ -19,7 +19,7 @@ void RobotState::init(YAML::Node& config){
 // RobotCommands
 RobotCommands::RobotCommands() {}
 
-void RobotCommands::init(YAML::Node& config){
+void RobotCommands::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
     position.resize(num_joints, 0.0);
     velocity.resize(num_joints, 0.0);
@@ -29,7 +29,7 @@ void RobotCommands::init(YAML::Node& config){
 // RobotRef
 RobotRef::RobotRef() {}
 
-void RobotRef::init(YAML::Node& config){
+void RobotRef::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
     position.resize(num_joints, 0.0);
     velocity.resize(num_joints, 0.0);
@@ -39,7 +39,7 @@ void RobotRef::init(YAML::Node& config){
 // RobotLimits
 RobotLimits::RobotLimits() {}
 
-void RobotLimits::init(YAML::Node& config){
+void RobotLimits::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
     position_min.resize(num_joints, -1.0);
     position_max.resize(num_joints, 1.0);
