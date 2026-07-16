@@ -1,0 +1,8 @@
+general:
+  n_joints: 12
+
+Safety:
+  e_stop: 0
+
+LowLevelControl:
+  mode: 2
