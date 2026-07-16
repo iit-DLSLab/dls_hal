@@ -79,7 +79,9 @@ ROBOT_LLC_TEMPLATE
 void ROBOT_LLC_TYPE::impedanceControl(const TState& state, const TRef& ref) {
     // Impedance control logic (to be implemented)
     for (int id = 0; id < state.position.size(); ++id) {
-        commands.torque[id] = ref.torque[id] + state.position[id] * ref.kp[id] + state.velocity[id] * ref.kd[id];
+        commands.torque[id] =   ref.torque[id] 
+                                + ref.kp[id] * (ref.position[id] - state.position[id])
+                                + ref.kd[id] * (ref.velocity[id] - state.velocity[id]);
     }
 }
 ROBOT_LLC_TEMPLATE
