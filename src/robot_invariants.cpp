@@ -8,10 +8,10 @@ RobotState::RobotState() {}
 void RobotState::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
     motor_status_word.resize(num_joints, 0);
-    joints_position.resize(num_joints, 0.0);
-    joints_velocity.resize(num_joints, 0.0);
-    joints_acceleration.resize(num_joints, 0.0);
-    joints_torques.resize(num_joints, 0.0);
+    position.resize(num_joints, 0.0);
+    velocity.resize(num_joints, 0.0);
+    acceleration.resize(num_joints, 0.0);
+    torques.resize(num_joints, 0.0);
     motor_temperature.resize(num_joints, 0.0);
     motor_current.resize(num_joints, 0.0);
 }

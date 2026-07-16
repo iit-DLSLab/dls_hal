@@ -11,10 +11,10 @@ public:
 
     void init(const YAML::Node& config);
 
-    std::vector<double> joints_position;
-    std::vector<double> joints_velocity;
-    std::vector<double> joints_acceleration;
-    std::vector<double> joints_torques;
+    std::vector<double> position;
+    std::vector<double> velocity;
+    std::vector<double> acceleration;
+    std::vector<double> torques;
     std::vector<uint32_t> motor_status_word;
     std::vector<double> motor_temperature;
     std::vector<double> motor_current;

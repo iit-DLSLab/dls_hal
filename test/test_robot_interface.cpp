@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
     const int N = config["general"]["n_joints"].as<int>();
 
     // vectors are sized correctly after init
-    assert((int)iface.state.joints_position.size() == N);
+    assert((int)iface.state.position.size() == N);
     assert((int)iface.low_level_control.commands.position.size() == N);
     assert((int)iface.ref.position.size() == N);
     assert((int)iface.limits.position_min.size() == N);
@@ -23,14 +23,14 @@ int main(int argc, char **argv) {
     assert(iface.limits.position_min[0] == -1.0);
 
     // setState / getState round-trip
-    iface.state.joints_position[0] = 1.5;
-    assert(iface.state.joints_position[0] == 1.5);
+    iface.state.position[0] = 1.5;
+    assert(iface.state.position[0] == 1.5);
 
     // setReference / getReference round-trip
     iface.ref.position[0] = 0.5;
     assert(iface.ref.position[0] == 0.5);
 
-    // displaty control mode
+    // display control mode
     std::cout << "Current control mode: " << static_cast<int>(iface.low_level_control.control_mode) << std::endl;
 
     // computeCommands should not throw
