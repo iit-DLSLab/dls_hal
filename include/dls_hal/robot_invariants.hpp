@@ -57,10 +57,11 @@ public:
     void init(YAML::Node& config);
 
     bool e_stop_triggered;
-
+    
+    virtual void eSTOP(TCommands& commands);
     virtual bool checkState(TState state, TLimits limits);
-    bool checkReference(TRef ref, TLimits limits);
-    bool checkCommands(TCommands commands, TLimits limits);
+    virtual bool checkReference(TRef ref, TLimits limits);
+    virtual bool checkCommands(TCommands commands, TLimits limits);
 };
 
 template <typename TState, typename TRef, typename TCommands>

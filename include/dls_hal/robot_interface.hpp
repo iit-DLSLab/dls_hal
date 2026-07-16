@@ -8,7 +8,6 @@ template <typename TState, typename TRef, typename TCommands, typename TLimits, 
 class RobotInterface{
 public:
     RobotInterface(){
-
         // check that the types are compatible
         static_assert(std::is_base_of<RobotState, TState>::value, "TState must be derived from RobotState");
         static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
@@ -21,7 +20,16 @@ public:
 
     // computations of commands based on actual state, reference and configuration
     void computeCommands(){
-        low_level_control.computeCommands(state, ref);
+        // check safety status for e-stop
+        if(safety.e_stop_triggered){
+            std::cout << "Emergency stop triggered. Using E-stop reference." << std::endl;
+            safety.eSTOP(low_level_control.commands);
+        }
+        else{
+            low_level_control.computeCommands(state, ref);
+        }
+
+        safety.checkCommands(low_level_control.commands, limits);
     }
 
     // function initialization
@@ -40,14 +48,13 @@ public:
 
     void setReference(TRef& ref){
         this->ref = ref;
+        safety.checkReference(ref, limits);
     }
 
     void setState(TState& state){
         this->state = state;
         // check safety conditions based on the new state
-        if(!safety.checkState(state, limits)){
-            // handle safety violation, e.g., trigger emergency stop
-        }
+        safety.checkState(state, limits);
     }
 
     void setLimits(TLimits& limits){

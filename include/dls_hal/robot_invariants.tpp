@@ -32,6 +32,15 @@ bool RobotSafety<TState, TRef, TCommands, TLimits>::checkReference(TRef ref, TLi
 template <typename TState, typename TRef, typename TCommands, typename TLimits>
 bool RobotSafety<TState, TRef, TCommands, TLimits>::checkCommands(TCommands commands, TLimits limits) { return true; }
 
+template <typename TState, typename TRef, typename TCommands, typename TLimits>
+void RobotSafety<TState, TRef, TCommands, TLimits>::eSTOP(TCommands& commands) {
+    // Set all commands to zero or safe values
+    std::fill(commands.position.begin(), commands.position.end(), 0.0);
+    std::fill(commands.velocity.begin(), commands.velocity.end(), 0.0);
+    std::fill(commands.torque.begin(), commands.torque.end(), 0.0);
+    std::cout << "Emergency stop activated. Commands set to safe values." << std::endl;
+}
+
 // RobotLowLevelControl
 template <typename TState, typename TRef, typename TCommands>
 RobotLowLevelControl<TState, TRef, TCommands>::RobotLowLevelControl(){}
