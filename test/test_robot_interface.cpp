@@ -8,7 +8,7 @@
 int main(int argc, char **argv) {
     QuadrupedInterface iface;
 
-    YAML::Node config = YAML::LoadFile("../../config/quadruped_interface_config.yaml");
+    YAML::Node config = YAML::LoadFile("../../config/dls_hal/quadruped_interface_config.yaml");
     assert(iface.init(config));
 
     const int N = config["general"]["n_joints"].as<int>();
