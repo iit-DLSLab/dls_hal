@@ -2,19 +2,20 @@
 #define ROBOT_INTERFACE_HPP
 
 #include "yaml-cpp/yaml.h"
+#include "robot_invariants.hpp"
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits, typename TSafety, typename TLowLevelControl>
 class RobotInterface{
 public:
     RobotInterface(){
 
-        // // check that the types are compatible
-        // static_assert(std::is_base_of<RobotState, TState>::value, "TState must be derived from RobotState");
-        // static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
-        // static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
-        // static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
-        // static_assert(std::is_base_of<RobotSafety<TState, TRef, TCommands, TLimits>, TSafety>::value, "TSafety must be derived from RobotSafety<TState, TRef, TCommands, TLimits>");
-        // static_assert(std::is_base_of<RobotLowLevelControl<TState, TRef, TCommands>, TLowLevelControl>::value, "TLowLevelControl must be derived from RobotLowLevelControl<TState, TRef, TCommands>");
+        // check that the types are compatible
+        static_assert(std::is_base_of<RobotState, TState>::value, "TState must be derived from RobotState");
+        static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
+        static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
+        static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
+        static_assert(std::is_base_of<RobotSafety<TState, TRef, TCommands, TLimits>, TSafety>::value, "TSafety must be derived from RobotSafety<TState, TRef, TCommands, TLimits>");
+        static_assert(std::is_base_of<RobotLowLevelControl<TState, TRef, TCommands>, TLowLevelControl>::value, "TLowLevelControl must be derived from RobotLowLevelControl<TState, TRef, TCommands>");
     };
     ~RobotInterface(){};
 
