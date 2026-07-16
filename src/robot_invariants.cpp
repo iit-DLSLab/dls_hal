@@ -31,9 +31,13 @@ RobotRef::RobotRef() {}
 
 void RobotRef::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
+    control_mode = config["general"]["low_level_control"]["mode"].as<uint32_t>();
     position.resize(num_joints, 0.0);
     velocity.resize(num_joints, 0.0);
     torque.resize(num_joints, 0.0);
+    kp.resize(num_joints, 0.0);
+    ki.resize(num_joints, 0.0);
+    kd.resize(num_joints, 0.0);
 }
 
 // RobotLimits

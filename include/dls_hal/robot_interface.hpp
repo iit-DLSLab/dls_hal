@@ -51,7 +51,6 @@ public:
     }
 
     void checkState(){
-        // check safety conditions based on the new state
         safety.checkState(state, limits);
     }
     

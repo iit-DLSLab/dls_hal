@@ -33,9 +33,14 @@ class RobotRef{
 public:
     RobotRef();
     void init(const YAML::Node& config);
+
+    uint32_t control_mode;
     std::vector<double> position;
     std::vector<double> velocity;
     std::vector<double> torque;
+    std::vector<double> kp;
+    std::vector<double> ki;
+    std::vector<double> kd;
 };
 
 class RobotLimits{
@@ -81,11 +86,11 @@ public:
 
     void computeCommands(const TState& state, const TRef& ref);
 
-    void positionControl();
-    void velocityControl();
-    void torqueControl();
-    void impedanceControl();
-    void currentControl();
+    void positionControl(const TState& state, const TRef& ref);
+    void velocityControl(const TState& state, const TRef& ref);
+    void torqueControl(const TState& state, const TRef& ref);
+    void impedanceControl(const TState& state, const TRef& ref);
+    void currentControl(const TState& state, const TRef& ref);
 
     CONTROL_MODE control_mode;
 

@@ -42,25 +42,39 @@ template <typename TState, typename TRef, typename TCommands>
 void RobotLowLevelControl<TState, TRef, TCommands>::computeCommands(const TState& state, const TRef& ref){
     // Implementation for computing commands based on state and reference
     if (control_mode == CONTROL_MODE::POSITION_CONTROL) {
-        positionControl();
+        positionControl(state, ref);
     } else if (control_mode == CONTROL_MODE::VELOCITY_CONTROL) {
-        velocityControl();
+        velocityControl(state, ref);
     } else if (control_mode == CONTROL_MODE::TORQUE_CONTROL) {
-        torqueControl();
+        torqueControl(state, ref);
     } else if (control_mode == CONTROL_MODE::IMPEDANCE_CONTROL) {
-        impedanceControl();
+        impedanceControl(state, ref);
     } else if (control_mode == CONTROL_MODE::CURRENT_CONTROL) {
-        currentControl();
+        currentControl(state, ref);
     }
 }
 
 template <typename TState, typename TRef, typename TCommands>
-void RobotLowLevelControl<TState, TRef, TCommands>::positionControl() { std::cout << "Position control logic not implemented yet." << std::endl; }
+void RobotLowLevelControl<TState, TRef, TCommands>::positionControl(const TState& state, const TRef& ref) {
+    commands.position = ref.position; // Simple position control logic    
+}
 template <typename TState, typename TRef, typename TCommands>
-void RobotLowLevelControl<TState, TRef, TCommands>::velocityControl() { std::cout << "Velocity control logic not implemented yet." << std::endl; }
+void RobotLowLevelControl<TState, TRef, TCommands>::velocityControl(const TState& state, const TRef& ref) {
+    commands.velocity = ref.velocity; // Simple velocity control logic
+}
 template <typename TState, typename TRef, typename TCommands>
-void RobotLowLevelControl<TState, TRef, TCommands>::torqueControl() { std::cout << "Torque control logic not implemented yet." << std::endl; }
+void RobotLowLevelControl<TState, TRef, TCommands>::torqueControl(const TState& state, const TRef& ref) {
+    commands.torque = ref.torque; // Simple torque control logic
+}
 template <typename TState, typename TRef, typename TCommands>
-void RobotLowLevelControl<TState, TRef, TCommands>::impedanceControl() { std::cout << "Impedance control logic not implemented yet." << std::endl; }
+void RobotLowLevelControl<TState, TRef, TCommands>::impedanceControl(const TState& state, const TRef& ref) {
+    // Impedance control logic (to be implemented)
+    for (int id = 0; id < state.position.size(); ++id) {
+        commands.torque[id] = ref.torque[id] + state.position[id] * ref.kp[id] + state.velocity[id] * ref.kd[id];
+    }
+}
 template <typename TState, typename TRef, typename TCommands>
-void RobotLowLevelControl<TState, TRef, TCommands>::currentControl() { std::cout << "Current control logic not implemented yet." << std::endl; }
+void RobotLowLevelControl<TState, TRef, TCommands>::currentControl(const TState& state, const TRef& ref) { 
+    // Current control logic (to be implemented)
+    std::cout << "Current control logic not implemented yet." << std::endl;
+}
