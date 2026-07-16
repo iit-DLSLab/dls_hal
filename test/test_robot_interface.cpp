@@ -14,33 +14,24 @@ int main(int argc, char **argv) {
     const int N = config["general"]["n_joints"].as<int>();
 
     // vectors are sized correctly after init
-    assert((int)iface.getState().joints_position.size() == N);
-    assert((int)iface.getCommands().position.size() == N);
-    assert((int)iface.getReference().position.size() == N);
-    assert((int)iface.getLimits().position_min.size() == N);
+    assert((int)iface.state.joints_position.size() == N);
+    assert((int)iface.low_level_control.commands.position.size() == N);
+    assert((int)iface.ref.position.size() == N);
+    assert((int)iface.limits.position_min.size() == N);
     // setLimits / getLimits round-trip
-    QuadrupedLimits limits;
-    limits.init(config);
-    limits.position_min[0] = -1.0;
-    iface.setLimits(limits);
-    assert(iface.getLimits().position_min[0] == -1.0);
+    iface.limits.position_min[0] = -1.0;
+    assert(iface.limits.position_min[0] == -1.0);
 
     // setState / getState round-trip
-    QuadrupedState state;
-    state.init(config);
-    state.joints_position[0] = 1.5;
-    iface.setState(state);
-    assert(iface.getState().joints_position[0] == 1.5);
+    iface.state.joints_position[0] = 1.5;
+    assert(iface.state.joints_position[0] == 1.5);
 
     // setReference / getReference round-trip
-    QuadrupedRef ref;
-    ref.init(config);
-    ref.position[0] = 0.5;
-    iface.setReference(ref);
-    assert(iface.getReference().position[0] == 0.5);
+    iface.ref.position[0] = 0.5;
+    assert(iface.ref.position[0] == 0.5);
 
     // displaty control mode
-    std::cout << "Current control mode: " << static_cast<int>(iface.getLowLevelControl().control_mode) << std::endl;
+    std::cout << "Current control mode: " << static_cast<int>(iface.low_level_control.control_mode) << std::endl;
 
     // computeCommands should not throw
     iface.computeCommands();

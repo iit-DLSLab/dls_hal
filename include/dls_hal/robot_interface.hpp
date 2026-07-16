@@ -46,42 +46,15 @@ public:
         this->ref = ref;
     }
 
-    void setReference(const TRef& ref){
-        this->ref = ref;
+    void checkReference(){
         safety.checkReference(ref, limits);
     }
 
-    void setState(const TState& state){
-        this->state = state;
+    void checkState(){
         // check safety conditions based on the new state
         safety.checkState(state, limits);
     }
-
-    void setLimits(const TLimits& limits){
-        this->limits = limits;
-    }
-
-    TState& getState(){
-        return state;
-    }
-
-    TRef& getReference(){
-        return ref;
-    }
-
-    TCommands& getCommands(){
-        return low_level_control.commands;
-    }
-
-    TLimits& getLimits(){
-        return limits;
-    }
-
-    TLowLevelControl& getLowLevelControl(){
-        return low_level_control;
-    }
-
-private:
+    
     TSafety safety; // E-stop, clamping, limit checks
     TRef ref;
     TState state;
