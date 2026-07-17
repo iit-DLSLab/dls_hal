@@ -53,6 +53,9 @@ public:
     std::vector<double> velocity_max;
     std::vector<double> torque_max;
     std::vector<double> current_max;
+    std::vector<double> motor_temperature_min;
+    std::vector<double> motor_temperature_max;
+    double battery_charge_min;
 };
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits>
