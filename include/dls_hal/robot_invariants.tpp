@@ -116,6 +116,26 @@ void ROBOT_SAFETY_TYPE::eSTOP(TCommands& commands) {
     std::cout << "Emergency stop activated. Commands set to safe values." << std::endl;
 }
 
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::displayAnomalies() const {
+    for (size_t i = 0; i < anomalies.joint_pos_limit_violation.size(); ++i) {
+        if (anomalies.joint_pos_limit_violation[i])
+            std::cout << "Joint " << i << " position limit violation detected." << std::endl;
+        if (anomalies.joint_vel_limit_violation[i])
+            std::cout << "Joint " << i << " velocity limit violation detected." << std::endl;
+        if (anomalies.joint_torque_limit_violation[i])
+            std::cout << "Joint " << i << " torque limit violation detected." << std::endl;
+        if (anomalies.nan_value_detected[i])
+            std::cout << "Joint " << i << " NaN value detected." << std::endl;
+        if (anomalies.inf_value_detected[i])
+            std::cout << "Joint " << i << " Inf value detected." << std::endl;
+        if (anomalies.motor_overheat_detected[i])
+            std::cout << "Joint " << i << " motor overheat detected." << std::endl;
+    }
+    if (anomalies.battery_charge_low)
+        std::cout << "Battery charge is low." << std::endl;
+}
+
 // RobotLowLevelControl
 ROBOT_LLC_TEMPLATE
 ROBOT_LLC_TYPE::RobotLowLevelControl(){}

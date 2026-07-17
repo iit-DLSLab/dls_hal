@@ -74,6 +74,8 @@ public:
 
     virtual bool checkJointStateLimit(double value, double min_limit, double max_limit);
     virtual bool checkJointStateNanInf(double value);
+
+    void displayAnomalies() const;
     // Robot anomalies
     class RobotAnomalies{
     public:
