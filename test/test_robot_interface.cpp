@@ -8,10 +8,9 @@
 int main(int argc, char **argv) {
     QuadrupedInterface iface;
 
-    YAML::Node config = YAML::LoadFile("../../config/dls_hal/quadruped_interface_config.yaml");
-    assert(iface.init(config));
+    assert(iface.init("quadruped_interface_config"));
 
-    const int N = config["general"]["n_joints"].as<int>();
+    const int N = 12; // Replace with actual config value if available
 
     // vectors are sized correctly after init
     assert((int)iface.state.position.size() == N);
