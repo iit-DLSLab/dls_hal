@@ -30,10 +30,43 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::checkReference(const TRef& ref) {
+    // Check if reference is within limits, and clamping if necessary
+    for (size_t i = 0; i < ref.position.size(); ++i) {
+        if (ref.position[i] < limits.position_min[i] || ref.position[i] > limits.position_max[i]) {
+            std::clamp(ref.position[i], limits.position_min[i], limits.position_max[i]);
+            return true;
+        }
+        if (ref.velocity[i] < -limits.velocity_max[i] || ref.velocity[i] > limits.velocity_max[i]) {
+            std::clamp(ref.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
+            return true;
+        }
+        if (ref.torque[i] < -limits.torque_max[i] || ref.torque[i] > limits.torque_max[i]) {
+            std::clamp(ref.torque[i], -limits.torque_max[i], limits.torque_max[i]);
+            return true;
+        }
+    }
+    return true;
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::checkCommands(const TCommands& commands) {
+    // Check if commands are within limits, and clamping if necessary
+    for (size_t i = 0; i < commands.position.size(); ++i) {
+        if (commands.position[i] < limits.position_min[i] || commands.position[i] > limits.position_max[i]) {
+            std::clamp(commands.position[i], limits.position_min[i], limits.position_max[i]);
+            return true;
+        }
+        if (commands.velocity[i] < -limits.velocity_max[i] || commands.velocity[i] > limits.velocity_max[i]) {
+            std::clamp(commands.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
+            return true;
+        }
+        if (commands.torque[i] < -limits.torque_max[i] || commands.torque[i] > limits.torque_max[i]) {
+            std::clamp(commands.torque[i], -limits.torque_max[i], limits.torque_max[i]);
+            return true;
+        }
+    }
+    
+    return true;
 }
 
 ROBOT_SAFETY_TEMPLATE
