@@ -1,0 +1,49 @@
+cmake_minimum_required(VERSION 3.16.2)
+project(robot_interface)
+
+set(DEFAULT_ROBOT_INTERFACE_PATH "/usr/share/config/dls_hal")
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/dls_hal/config.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config.hpp
+    @ONLY
+)
+add_library(robot_interface SHARED
+    src/robot_invariants.cpp
+)
+
+set_target_properties(robot_interface PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(robot_interface PUBLIC yaml-cpp)
+
+target_include_directories(robot_interface PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+install(TARGETS robot_interface
+    EXPORT robot_interfaceTargets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
+#install config folder
+install(DIRECTORY config
+    DESTINATION /usr/share
+)
+# install include folder
+install(DIRECTORY include/
+    DESTINATION /usr/include
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config.hpp
+    DESTINATION
+        /usr/include/dls_hal
+)
+
+add_subdirectory(test)
