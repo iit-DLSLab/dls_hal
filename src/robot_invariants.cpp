@@ -14,6 +14,7 @@ void RobotState::init(const YAML::Node& config){
     torques.resize(num_joints, 0.0);
     motor_temperature.resize(num_joints, 0.0);
     motor_current.resize(num_joints, 0.0);
+    battery_status = 0.0;
 }
 
 // RobotCommands

@@ -18,6 +18,7 @@ public:
     std::vector<uint32_t> motor_status_word;
     std::vector<double> motor_temperature;
     std::vector<double> motor_current;
+    double battery_status;
 };
 
 class RobotCommands{
