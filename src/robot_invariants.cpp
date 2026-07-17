@@ -15,6 +15,7 @@ void RobotState::init(const YAML::Node& config){
     motor_temperature.resize(num_joints, 0.0);
     motor_current.resize(num_joints, 0.0);
     battery_status = 100.0;
+    contacts.resize(num_joints, false);
 }
 
 // RobotCommands
