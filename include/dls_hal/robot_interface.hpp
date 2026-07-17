@@ -12,7 +12,6 @@ public:
         static_assert(std::is_base_of<RobotState, TState>::value, "TState must be derived from RobotState");
         static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
         static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
-        static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
         static_assert(std::is_base_of<RobotSafety<TState, TRef, TCommands, TLimits>, TSafety>::value, "TSafety must be derived from RobotSafety<TState, TRef, TCommands, TLimits>");
         static_assert(std::is_base_of<RobotLowLevelControl<TState, TRef, TCommands>, TLowLevelControl>::value, "TLowLevelControl must be derived from RobotLowLevelControl<TState, TRef, TCommands>");
     };
@@ -29,14 +28,13 @@ public:
             low_level_control.computeCommands(state, ref);
         }
 
-        safety.checkCommands(low_level_control.commands, limits);
+        safety.checkCommands(low_level_control.commands);
     }
 
     // function initialization
     bool init(const YAML::Node& config){
         state.init(config);
         ref.init(config);
-        limits.init(config);
         safety.init(config);
         low_level_control.init(config);
         return true;
@@ -47,17 +45,16 @@ public:
     }
 
     void checkReference(){
-        safety.checkReference(ref, limits);
+        safety.checkReference(ref);
     }
 
     void checkState(){
-        safety.checkState(state, limits);
+        safety.checkState(state);
     }
     
     TSafety safety; // E-stop, clamping, limit checks
     TRef ref;
     TState state;
-    TLimits limits;
     TLowLevelControl low_level_control;
 };
 

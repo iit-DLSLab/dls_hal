@@ -64,9 +64,9 @@ public:
     bool e_stop_triggered;
     
     virtual void eSTOP(TCommands& commands);
-    virtual bool checkState(const TState& state, const TLimits& limits);
-    virtual bool checkReference(const TRef& ref, const TLimits& limits);
-    virtual bool checkCommands(const TCommands& commands, const TLimits& limits);
+    virtual bool checkState(const TState& state);
+    virtual bool checkReference(const TRef& ref);
+    virtual bool checkCommands(const TCommands& commands);
 };
 
 template <typename TState, typename TRef, typename TCommands>

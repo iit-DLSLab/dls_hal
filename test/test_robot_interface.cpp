@@ -17,10 +17,10 @@ int main(int argc, char **argv) {
     assert((int)iface.state.position.size() == N);
     assert((int)iface.low_level_control.commands.position.size() == N);
     assert((int)iface.ref.position.size() == N);
-    assert((int)iface.limits.position_min.size() == N);
+    assert((int)iface.safety.limits.position_min.size() == N);
     // setLimits / getLimits round-trip
-    iface.limits.position_min[0] = -1.0;
-    assert(iface.limits.position_min[0] == -1.0);
+    iface.safety.limits.position_min[0] = -1.0;
+    assert(iface.safety.limits.position_min[0] == -1.0);
 
     // setState / getState round-trip
     iface.state.position[0] = 1.5;

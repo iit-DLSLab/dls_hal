@@ -10,22 +10,31 @@
 // RobotSafety
 ROBOT_SAFETY_TEMPLATE
 ROBOT_SAFETY_TYPE::RobotSafety(){
+    static_assert(std::is_base_of<RobotState, TState>::value, "TState must be derived from RobotState");
+    static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
+    static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
+    static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
     e_stop_triggered = false;
 }
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     e_stop_triggered = config["safety"]["e_stop"].as<int>();
+    limits.init(config);
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkState(const TState& state, const TLimits& limits) {return true;}
+bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
+    return true;
+}
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkReference(const TRef& ref, const TLimits& limits) { return true; }
+bool ROBOT_SAFETY_TYPE::checkReference(const TRef& ref) {
+}
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkCommands(const TCommands& commands, const TLimits& limits) { return true; }
+bool ROBOT_SAFETY_TYPE::checkCommands(const TCommands& commands) {
+}
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::eSTOP(TCommands& commands) {

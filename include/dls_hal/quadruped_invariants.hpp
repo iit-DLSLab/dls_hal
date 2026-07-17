@@ -17,8 +17,8 @@ class QuadrupedLimits : public RobotLimits{};
 
 class QuadrupedSafety : public RobotSafety<QuadrupedState, QuadrupedRef, QuadrupedCommands, QuadrupedLimits>{
 public:
-    bool checkState(const QuadrupedState& state, const QuadrupedLimits& limits) override{
-        RobotSafety<QuadrupedState, QuadrupedRef, QuadrupedCommands, QuadrupedLimits>::checkState(state, limits);
+    bool checkState(const QuadrupedState& state) override{
+        RobotSafety<QuadrupedState, QuadrupedRef, QuadrupedCommands, QuadrupedLimits>::checkState(state);
         return true;
     }
 };
