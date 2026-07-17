@@ -67,6 +67,7 @@ public:
     virtual bool checkState(const TState& state);
     virtual bool checkReference(const TRef& ref);
     virtual bool checkCommands(const TCommands& commands);
+    TLimits limits;
 };
 
 template <typename TState, typename TRef, typename TCommands>
