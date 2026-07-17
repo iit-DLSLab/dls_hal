@@ -13,7 +13,7 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         void init();
 
-        void consumeInputs(const GenericRobotInterface& source);
+        void consumeInputs(GenericRobotInterface& source);
         void produceOutputs(const GenericRobotInterface& source);
 
         dls::ReaderPtr<dls2_interface::msg::TrajectoryGenerator> input_traj_gen;

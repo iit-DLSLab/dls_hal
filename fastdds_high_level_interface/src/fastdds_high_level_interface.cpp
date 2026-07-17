@@ -16,11 +16,23 @@ void FastDDSHLInterface::init(){
     dls::topics::low_level_estimation::blind_state);
 }
 
-void FastDDSHLInterface::consumeInputs(const GenericRobotInterface& source){
-    // consume inputs from the transport layer and update the source
+void FastDDSHLInterface::consumeInputs(GenericRobotInterface& source){
+    transport.read();
+    source.ref.position = input_traj_gen->msg.joints_position();
+    source.ref.velocity = input_traj_gen->msg.joints_velocity();
+    source.ref.torque = input_desired_torques->msg.desired_torques(); // input_traj_gen->msg.joints_effort();
+    source.ref.kp = input_traj_gen->msg.kp();
+    source.ref.kd = input_traj_gen->msg.kd();
 }
 
 void FastDDSHLInterface::produceOutputs(const GenericRobotInterface& source){
-    // produce outputs to the transport layer from the source
-
+    // mapping blind state to source state
+    output_blind_state->msg.joints_position() = source.state.position;
+    output_blind_state->msg.joints_velocity() = source.state.velocity;
+    output_blind_state->msg.joints_acceleration() = source.state.acceleration;
+    output_blind_state->msg.joints_effort() = source.state.torques;
+    output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
+    output_blind_state->msg.feet_contact() = source.state.contacts;
+    // TODO add motor current, status word and battery status to blind state
+    transport.write();
 }
