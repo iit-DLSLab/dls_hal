@@ -71,6 +71,21 @@ public:
     virtual bool checkState(const TState& state);
     virtual bool checkReference(const TRef& ref);
     virtual bool checkCommands(const TCommands& commands);
+
+    virtual bool checkJointStateLimit(double value, double min_limit, double max_limit);
+    virtual bool checkJointStateNanInf(double value);
+    // Robot anomalies
+    class RobotAnomalies{
+    public:
+        std::vector<bool> joint_pos_limit_violation;
+        std::vector<bool> joint_vel_limit_violation;
+        std::vector<bool> joint_torque_limit_violation;
+        std::vector<bool> nan_value_detected;
+        std::vector<bool> inf_value_detected;
+        std::vector<bool> motor_overheat_detected;
+        bool battery_charge_low;
+    } anomalies;
+
     TLimits limits;
 };
 

@@ -46,9 +46,13 @@ RobotLimits::RobotLimits() {}
 
 void RobotLimits::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
-    position_min.resize(num_joints, -1.0);
-    position_max.resize(num_joints, 1.0);
-    velocity_max.resize(num_joints, 1.0);
-    torque_max.resize(num_joints, 1.0);
-    current_max.resize(num_joints, 1.0);
+    // no limits by default, set to extreme values
+    position_min.resize(num_joints, -std::numeric_limits<double>::max());
+    position_max.resize(num_joints, std::numeric_limits<double>::max());
+    velocity_max.resize(num_joints, std::numeric_limits<double>::max());
+    torque_max.resize(num_joints, std::numeric_limits<double>::max());
+    current_max.resize(num_joints, std::numeric_limits<double>::max());
+    motor_temperature_min.resize(num_joints, -std::numeric_limits<double>::max());
+    motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
+    battery_charge_min = 0.0;
 }

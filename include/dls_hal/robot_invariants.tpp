@@ -20,12 +20,50 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     e_stop_triggered = config["safety"]["e_stop"].as<int>();
+    anomalies.joint_pos_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.joint_vel_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.joint_torque_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.nan_value_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.inf_value_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.battery_charge_low = false;
     limits.init(config);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
+    // Check if state is within limits, and setting anomalies if necessary
+    for (size_t i = 0; i < state.position.size(); ++i) {
+        anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
+        anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
+        anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torques[i], -limits.torque_max[i], limits.torque_max[i]);
+        anomalies.motor_overheat_detected[i] = checkJointStateLimit(state.motor_temperature[i], limits.motor_temperature_min[i], limits.motor_temperature_max[i]);
+        anomalies.nan_value_detected[i] = checkJointStateNanInf(state.position[i]);
+        anomalies.inf_value_detected[i] = checkJointStateNanInf(state.velocity[i]);
+        anomalies.nan_value_detected[i] = checkJointStateNanInf(state.torques[i]);
+        anomalies.inf_value_detected[i] = checkJointStateNanInf(state.battery_status);
+    }
+
+    anomalies.battery_charge_low = (state.battery_status < limits.battery_charge_min);
     return true;
+}
+
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::checkJointStateLimit(double value, double min_limit, double max_limit) {
+    if (value < min_limit || value > max_limit) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::checkJointStateNanInf(double value) {
+    if (std::isnan(value) || std::isinf(value)) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 ROBOT_SAFETY_TEMPLATE
