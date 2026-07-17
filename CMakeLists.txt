@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.16.2)
 project(dls_hal)
 
+
+set(DEFAULT_ROBOT_INTERFACE_PATH "/usr/share/config/dls_hal")
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/dls_hal/config.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config.hpp
+    @ONLY
+)
 add_library(dls_hal SHARED
     src/robot_invariants.cpp
 )
@@ -11,6 +19,7 @@ target_link_libraries(dls_hal PUBLIC yaml-cpp)
 
 target_include_directories(dls_hal PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -29,6 +38,13 @@ install(DIRECTORY config
 # install include folder
 install(DIRECTORY include/
     DESTINATION /usr/include
+)
+
+install(
+    FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config.hpp
+    DESTINATION
+        /usr/include/dls_hal
 )
 
 add_subdirectory(test)
