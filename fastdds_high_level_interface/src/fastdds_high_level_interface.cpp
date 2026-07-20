@@ -16,7 +16,7 @@ void FastDDSHLInterface::init(){
     dls::topics::low_level_estimation::blind_state);
 }
 
-void FastDDSHLInterface::consumeInputs(GenericRobotInterface& source){
+void FastDDSHLInterface::read(GenericRobotInterface& source){
     transport.read();
     source.ref.position = input_traj_gen->msg.joints_position();
     source.ref.velocity = input_traj_gen->msg.joints_velocity();
@@ -25,7 +25,7 @@ void FastDDSHLInterface::consumeInputs(GenericRobotInterface& source){
     source.ref.kd = input_traj_gen->msg.kd();
 }
 
-void FastDDSHLInterface::produceOutputs(const GenericRobotInterface& source){
+void FastDDSHLInterface::write(const GenericRobotInterface& source){
     // mapping blind state to source state
     output_blind_state->msg.joints_position() = source.state.position;
     output_blind_state->msg.joints_velocity() = source.state.velocity;
