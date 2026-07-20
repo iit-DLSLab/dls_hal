@@ -18,6 +18,7 @@ void RobotState::init(const YAML::Node& config){
     names.resize(num_joints, "");
     robot_name = "";
     battery_status = 100.0;
+    contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     imu.resize(config["general"]["n_imus"].as<int>(), IMU());
 }
 
