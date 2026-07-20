@@ -12,6 +12,7 @@ INTERFACE
     transport_interfaces
 PUBLIC
     robot_interface
+    fastdds_transport
     dls_topics
     dls_signal
 )
@@ -24,6 +25,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_link_directories(${PROJECT_NAME} PUBLIC
     /usr/lib/dls2
+    /usr/local/lib
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib>
 )
 
 install(TARGETS ${PROJECT_NAME}
