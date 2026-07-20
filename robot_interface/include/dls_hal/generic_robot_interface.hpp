@@ -1,3 +1,4 @@
+#pragma once
 
 #include "dls_hal/robot_interface.hpp"
 #include "dls_hal/robot_invariants.hpp"
