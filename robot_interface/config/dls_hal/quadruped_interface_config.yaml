@@ -1,5 +1,7 @@
 general:
   n_joints: 12
+  n_contacts: 4
+  n_imus: 1
 
 safety:
   e_stop: 0

@@ -5,6 +5,20 @@
 #include "stdint.h"
 #include "yaml-cpp/yaml.h"
 
+class IMU{
+public:
+    IMU();
+    void init(const YAML::Node& config);
+    std::string frame_id;
+    std::array<double, 4> orientation;
+    std::array<double, 3> orientation_rpy;
+    std::array<double, 9> orientation_covariance;
+    std::array<double, 3> angular_velocity;
+    std::array<double, 9> angular_velocity_covariance;
+    std::array<double, 3> linear_acceleration;
+    std::array<double, 9> linear_acceleration_covariance;
+};
+
 class RobotState{
 public:
     RobotState();
@@ -21,6 +35,7 @@ public:
     std::vector<double> motor_temperature;
     std::vector<double> motor_current;
     std::vector<bool> contacts;
+    std::vector<IMU> imu;
     double battery_status;
 };
 

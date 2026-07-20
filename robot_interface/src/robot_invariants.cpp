@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+IMU::IMU() {}
 // RobotState
 RobotState::RobotState() {}
 
@@ -17,7 +18,7 @@ void RobotState::init(const YAML::Node& config){
     names.resize(num_joints, "");
     robot_name = "";
     battery_status = 100.0;
-    contacts.resize(num_joints, false);
+    imu.resize(config["general"]["n_imus"].as<int>(), IMU());
 }
 
 // RobotCommands

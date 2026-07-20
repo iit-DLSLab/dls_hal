@@ -14,6 +14,8 @@ void FastDDSHLInterface::init(){
     dls::topics::desired_torques);
     output_blind_state = transport.buildOutput<dls2_interface::msg::BlindState>(
     dls::topics::low_level_estimation::blind_state);
+    output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
+    dls::topics::low_level_estimation::imu);
 }
 
 void FastDDSHLInterface::read(GenericRobotInterface& source){
@@ -33,6 +35,20 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_blind_state->msg.joints_effort() = source.state.torques;
     output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
     output_blind_state->msg.feet_contact() = source.state.contacts;
+    writeIMU(source);
     // TODO add motor current, status word and battery status to blind state
     transport.write();
+}
+
+void FastDDSHLInterface::writeIMU(const GenericRobotInterface& source){
+    for(size_t i = 0; i < source.state.imu.size(); ++i){
+        output_imu->msg.frame_id() = source.state.imu[i].frame_id;
+        output_imu->msg.orientation() = source.state.imu[i].orientation;
+        output_imu->msg.orientation_rpy() = source.state.imu[i].orientation_rpy;
+        output_imu->msg.orientation_covariance() = source.state.imu[i].orientation_covariance;
+        output_imu->msg.angular_velocity() = source.state.imu[i].angular_velocity;
+        output_imu->msg.angular_velocity_covariance() = source.state.imu[i].angular_velocity_covariance;
+        output_imu->msg.linear_acceleration() = source.state.imu[i].linear_acceleration;
+        output_imu->msg.linear_acceleration_covariance() = source.state.imu[i].linear_acceleration_covariance;
+    }
 }

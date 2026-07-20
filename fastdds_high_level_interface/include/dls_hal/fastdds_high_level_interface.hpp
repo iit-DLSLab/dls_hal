@@ -16,7 +16,10 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         void read(GenericRobotInterface& source);
         void write(const GenericRobotInterface& source);
 
+        void writeIMU(const GenericRobotInterface& source);
+
         dls::ReaderPtr<dls2_interface::msg::TrajectoryGenerator> input_traj_gen;
         dls::ReaderPtr<dls2_interface::msg::DesiredTorques> input_desired_torques;
         dls::WriterPtr<dls2_interface::msg::BlindState> output_blind_state;
+        dls::WriterPtr<dls2_interface::msg::Imu> output_imu;
 };
