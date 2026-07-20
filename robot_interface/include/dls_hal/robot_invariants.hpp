@@ -11,6 +11,8 @@ public:
 
     void init(const YAML::Node& config);
 
+    std::string robot_name;
+    std::vector<std::string> names;
     std::vector<double> position;
     std::vector<double> velocity;
     std::vector<double> acceleration;
