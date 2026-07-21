@@ -17,6 +17,10 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source){
     output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
     dls::topics::low_level_estimation::imu);
 }
+    
+bool FastDDSHLInterface::check(){
+    return transport.areInputsReceivingData() && transport.areOutputsUnique();
+}
 
 void FastDDSHLInterface::read(GenericRobotInterface& source){
     transport.read();

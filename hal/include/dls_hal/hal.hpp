@@ -11,7 +11,10 @@ public:
 
     void init();
 
-    void run();
+
+    bool checkHighLevelInterface();
+
+    bool checkLowLevelInterface();
 
     LLI lli; // Low-Level Interface for reading/writing to the robot
     RI ri; // Robot Interface for managing robot state and commands
