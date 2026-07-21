@@ -10,7 +10,7 @@ public:
     Hal();
     ~Hal();
 
-    void init() override;
+    void init(const std::string& robot_interface_config_file) override;
 
     void run() override;
 

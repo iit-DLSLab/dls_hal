@@ -8,7 +8,7 @@ public:
     HalBase(){};
     ~HalBase(){};
 
-    virtual void init() = 0;
+    virtual void init(const std::string& robot_interface_config_file) = 0;
 
     virtual void run() = 0;
 };

@@ -12,9 +12,9 @@ Hal<LLI, RI, HLI>::~Hal()
 {}
 
 template <typename LLI, typename RI, typename HLI>
-void Hal<LLI, RI, HLI>::init()
+void Hal<LLI, RI, HLI>::init(const std::string& robot_interface_config_file)
 {
-    ri.init();
+    ri.init(robot_interface_config_file);
     lli.init(ri);
     hli.init(ri);
 }
