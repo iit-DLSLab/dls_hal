@@ -7,10 +7,9 @@ add_library(${PROJECT_NAME} SHARED
 
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_link_libraries(${PROJECT_NAME} 
-INTERFACE
-    transport_interfaces
+target_link_libraries(${PROJECT_NAME}
 PUBLIC
+    transport_interfaces
     robot_interface
     fastdds_transport
     dls_topics
