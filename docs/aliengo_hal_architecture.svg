@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+  width="900"
+  height="1250"
+  viewBox="0 0 900 1250"
+  version="1.1">
+  <title>AliengoHal concrete HAL architecture</title>
+  <desc>AliengoHal shown as a concrete specialization of the generic vertical robot HAL architecture.</desc>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2867b2"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#d46b28"/>
+    </marker>
+    <marker id="arrow-white" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ffffff"/>
+    </marker>
+    <style>
+      .page-title { font: 700 28px sans-serif; fill: #172033; }
+      .page-subtitle { font: 400 14px sans-serif; fill: #617087; }
+      .outer-title { font: 700 24px sans-serif; fill: #ffffff; }
+      .outer-subtitle { font: 400 13px sans-serif; fill: #dce6f6; }
+      .composition { font: 600 13px monospace; fill: #27354c; }
+      .component-title { font: 700 19px sans-serif; fill: #ffffff; }
+      .component-type { font: 600 11px monospace; fill: #506078; }
+      .section { font: 700 12px sans-serif; fill: #334158; letter-spacing: .3px; }
+      .method { font: 12.5px monospace; fill: #26334a; }
+      .data { font: 600 12px monospace; fill: #26334a; }
+      .label { font: 700 12px sans-serif; fill: #26334a; }
+      .small { font: 12px sans-serif; fill: #617087; }
+      .run-step { font: 600 12px sans-serif; fill: #ffffff; }
+      .flow-blue { fill: none; stroke: #2867b2; stroke-width: 3; marker-end: url(#arrow-blue); }
+      .flow-orange { fill: none; stroke: #d46b28; stroke-width: 3; marker-end: url(#arrow-orange); }
+      .run-line { fill: none; stroke: #ffffff; stroke-width: 2.5; marker-end: url(#arrow-white); }
+    </style>
+  </defs>
+
+  <g inkscape:groupmode="layer" inkscape:label="Background" id="background">
+    <rect x="0" y="0" width="900" height="1250" fill="#f5f7fb"/>
+    <text x="50" y="50" class="page-title">AliengoHal · concrete HAL example</text>
+    <text x="50" y="76" class="page-subtitle">The generic HLI → RobotInterface → LLI architecture bound to the Unitree Aliengo</text>
+    <rect x="40" y="105" width="820" height="1090" rx="24" fill="#ffffff" stroke="#29364d" stroke-width="4"/>
+    <path d="M64,105 H836 A24,24 0 0 1 860,129 V202 H40 V129 A24,24 0 0 1 64,105" fill="#29364d"/>
+    <text x="70" y="139" class="outer-title">dls::AliengoHal</text>
+    <text x="70" y="163" class="outer-subtitle">public dls::Hardware</text>
+    <text x="70" y="188" class="outer-subtitle">AliengoHal(hardware_id, robot_name) · create(hardware_id, robot_name)</text>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Composition" id="composition">
+    <rect x="65" y="220" width="745" height="52" rx="12" fill="#edf1f7" stroke="#b7c1d0"/>
+    <text x="437" y="242" text-anchor="middle" class="section">CONCRETE HAL COMPOSITION</text>
+    <text x="437" y="261" text-anchor="middle" class="composition">Hal&lt;AliengoLLI, GenericRobotInterface, FastDDSHLInterface&gt;</text>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Connections" id="connections">
+    <path d="M430,555 L430,602" class="flow-orange"/>
+    <path d="M505,602 L505,555" class="flow-blue"/>
+    <path d="M430,872 L430,919" class="flow-orange"/>
+    <path d="M505,919 L505,872" class="flow-blue"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="HAL orchestration" id="hal-orchestration">
+    <rect x="65" y="290" width="185" height="845" rx="16" fill="#29364d"/>
+    <text x="157" y="324" text-anchor="middle" class="outer-title">hal.run()</text>
+    <text x="157" y="347" text-anchor="middle" class="outer-subtitle">one Aliengo cycle</text>
+
+    <circle cx="92" cy="387" r="15" fill="#d46b28"/><text x="92" y="392" text-anchor="middle" class="run-step">1</text>
+    <text x="118" y="392" class="run-step">lli.read(ri)</text><path d="M92,405 L92,430" class="run-line"/>
+    <circle cx="92" cy="456" r="15" fill="#27835c"/><text x="92" y="461" text-anchor="middle" class="run-step">2</text>
+    <text x="118" y="461" class="run-step">ri.checkState()</text><path d="M92,474 L92,499" class="run-line"/>
+    <circle cx="92" cy="525" r="15" fill="#2867b2"/><text x="92" y="530" text-anchor="middle" class="run-step">3</text>
+    <text x="118" y="530" class="run-step">hli.write(ri)</text><path d="M92,543 L92,568" class="run-line"/>
+    <circle cx="92" cy="594" r="15" fill="#2867b2"/><text x="92" y="599" text-anchor="middle" class="run-step">4</text>
+    <text x="118" y="599" class="run-step">hli.read(ri)</text><path d="M92,612 L92,637" class="run-line"/>
+    <circle cx="92" cy="663" r="15" fill="#27835c"/><text x="92" y="668" text-anchor="middle" class="run-step">5</text>
+    <text x="118" y="668" class="run-step">checkReference()</text><path d="M92,681 L92,706" class="run-line"/>
+    <circle cx="92" cy="732" r="15" fill="#27835c"/><text x="92" y="737" text-anchor="middle" class="run-step">6</text>
+    <text x="118" y="729" class="run-step">compute</text><text x="118" y="744" class="run-step">Commands()</text>
+    <path d="M92,750 L92,775" class="run-line"/>
+    <circle cx="92" cy="801" r="15" fill="#27835c"/><text x="92" y="806" text-anchor="middle" class="run-step">7</text>
+    <text x="118" y="806" class="run-step">checkCommands()</text><path d="M92,819 L92,844" class="run-line"/>
+    <circle cx="92" cy="870" r="15" fill="#d46b28"/><text x="92" y="875" text-anchor="middle" class="run-step">8</text>
+    <text x="118" y="875" class="run-step">lli.write(ri)</text>
+
+    <line x1="82" y1="910" x2="228" y2="910" stroke="#60708a"/>
+    <text x="157" y="940" text-anchor="middle" class="outer-subtitle">HAL health checks</text>
+    <rect x="79" y="960" width="157" height="65" rx="10" fill="#3a4962" stroke="#71819b"/>
+    <text x="157" y="985" text-anchor="middle" class="run-step">checkHighLevel</text>
+    <text x="157" y="1002" text-anchor="middle" class="run-step">Interface()</text>
+    <text x="157" y="1019" text-anchor="middle" class="outer-subtitle">→ FastDDS.check()</text>
+    <rect x="79" y="1044" width="157" height="65" rx="10" fill="#3a4962" stroke="#71819b"/>
+    <text x="157" y="1069" text-anchor="middle" class="run-step">checkLowLevel</text>
+    <text x="157" y="1086" text-anchor="middle" class="run-step">Interface()</text>
+    <text x="157" y="1103" text-anchor="middle" class="outer-subtitle">→ AliengoLLI.check()</text>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Concrete interfaces" id="concrete-interfaces">
+    <!-- HLI -->
+    <g id="fastdds-hli">
+      <rect x="285" y="290" width="525" height="265" rx="16" fill="#eef4fc" stroke="#2867b2" stroke-width="2"/>
+      <path d="M301,290 H794 A16,16 0 0 1 810,306 V346 H285 V306 A16,16 0 0 1 301,290" fill="#2867b2"/>
+      <text x="315" y="325" class="component-title">FastDDSHLInterface</text>
+      <text x="315" y="370" class="component-type">TransportInterface&lt;GenericRobotInterface, FastDDSTransport&gt;</text>
+      <text x="315" y="400" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="425" class="method">init(const GenericRobotInterface&amp;)</text>
+      <text x="315" y="448" class="method">check() -&gt; bool</text>
+      <text x="315" y="471" class="method">read(GenericRobotInterface&amp;)</text>
+      <text x="315" y="494" class="method">write(const GenericRobotInterface&amp;)</text>
+      <text x="315" y="517" class="method">writeIMU(const GenericRobotInterface&amp;)</text>
+      <line x1="603" y1="394" x2="603" y2="527" stroke="#b6cae4"/>
+      <text x="625" y="400" class="section">PUBLIC MEMBERS</text>
+      <text x="625" y="426" class="data">transport</text>
+      <text x="625" y="452" class="data">input_traj_gen</text>
+      <text x="625" y="475" class="data">input_desired_torques</text>
+      <text x="625" y="498" class="data">output_blind_state</text>
+      <text x="625" y="521" class="data">output_imu</text>
+    </g>
+
+    <!-- RI -->
+    <g id="generic-robot-interface">
+      <rect x="285" y="602" width="525" height="270" rx="16" fill="#eef8f3" stroke="#27835c" stroke-width="2"/>
+      <path d="M301,602 H794 A16,16 0 0 1 810,618 V658 H285 V618 A16,16 0 0 1 301,602" fill="#27835c"/>
+      <text x="315" y="637" class="component-title">GenericRobotInterface</text>
+      <text x="315" y="682" class="component-type">RobotInterface&lt;RobotState, RobotRef, RobotCommands, ...&gt;</text>
+      <text x="315" y="711" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="736" class="method">init() -&gt; bool</text>
+      <text x="315" y="759" class="method">initReferences(const RobotRef&amp;)</text>
+      <text x="315" y="782" class="method">checkState()</text>
+      <text x="315" y="805" class="method">checkReference()</text>
+      <text x="315" y="828" class="method">computeCommands()</text>
+      <text x="315" y="851" class="method">checkCommands()</text>
+      <line x1="603" y1="705" x2="603" y2="850" stroke="#b5d7c4"/>
+      <text x="625" y="711" class="section">PUBLIC CONTROL MODES</text>
+      <text x="625" y="738" class="data">0 · POSITION</text>
+      <text x="625" y="761" class="data">1 · VELOCITY</text>
+      <text x="625" y="784" class="data">2 · TORQUE</text>
+      <text x="625" y="807" class="data">3 · IMPEDANCE</text>
+      <text x="625" y="830" class="data">4 · CURRENT</text>
+    </g>
+
+    <!-- LLI -->
+    <g id="aliengo-lli">
+      <rect x="285" y="919" width="525" height="216" rx="16" fill="#fff5ed" stroke="#d46b28" stroke-width="2"/>
+      <path d="M301,919 H794 A16,16 0 0 1 810,935 V975 H285 V935 A16,16 0 0 1 301,919" fill="#d46b28"/>
+      <text x="315" y="954" class="component-title">AliengoLLI</text>
+      <text x="315" y="998" class="component-type">TransportInterface&lt;GenericRobotInterface, aliengo::LowLevelInterface&gt;</text>
+      <text x="315" y="1026" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="1050" class="method">init()</text>
+      <text x="315" y="1073" class="method">check() -&gt; bool</text>
+      <text x="315" y="1096" class="method">read(GenericRobotInterface&amp;)</text>
+      <text x="315" y="1119" class="method">write(const GenericRobotInterface&amp;)</text>
+      <line x1="603" y1="1020" x2="603" y2="1116" stroke="#edc6a8"/>
+      <text x="625" y="1026" class="section">PUBLIC MEMBERS</text>
+      <text x="625" y="1051" class="data">transport</text>
+      <text x="625" y="1077" class="small">aliengo::LowLevelInterface</text>
+      <text x="625" y="1100" class="small">read(): receives sensor data</text>
+      <text x="625" y="1119" class="small">write(): sends Unitree LowCmd</text>
+    </g>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Flow annotations" id="flow-annotations">
+    <rect x="372" y="565" width="116" height="27" rx="7" fill="#fff4eb"/>
+    <text x="430" y="584" text-anchor="middle" class="label">reference</text>
+    <rect x="467" y="565" width="76" height="27" rx="7" fill="#edf4fd"/>
+    <text x="505" y="584" text-anchor="middle" class="label">state</text>
+    <rect x="372" y="882" width="116" height="27" rx="7" fill="#fff4eb"/>
+    <text x="430" y="901" text-anchor="middle" class="label">motor ref</text>
+    <rect x="467" y="882" width="76" height="27" rx="7" fill="#edf4fd"/>
+    <text x="505" y="901" text-anchor="middle" class="label">state</text>
+    <text x="547" y="1164" text-anchor="middle" class="small">Fast DDS applications ↔ GenericRobotInterface ↔ Unitree Aliengo UDP</text>
+  </g>
+</svg>

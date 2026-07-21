@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+  width="900"
+  height="1200"
+  viewBox="0 0 900 1200"
+  version="1.1">
+  <title>Vertical DLS robot HAL architecture</title>
+  <desc>High-level, robot, and low-level public interfaces arranged vertically inside the HAL, with the run cycle and interface checks emphasized.</desc>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#2867b2"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#d46b28"/>
+    </marker>
+    <marker id="arrow-white" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ffffff"/>
+    </marker>
+    <style>
+      .page-title { font: 700 28px sans-serif; fill: #172033; }
+      .page-subtitle { font: 400 14px sans-serif; fill: #617087; }
+      .hal-title { font: 700 24px sans-serif; fill: #ffffff; }
+      .hal-subtitle { font: 400 13px sans-serif; fill: #dce6f6; }
+      .component-title { font: 700 20px sans-serif; fill: #ffffff; }
+      .component-type { font: 600 12px monospace; fill: #506078; }
+      .section { font: 700 12px sans-serif; fill: #334158; letter-spacing: .3px; }
+      .method { font: 13px monospace; fill: #26334a; }
+      .data { font: 600 12px monospace; fill: #26334a; }
+      .label { font: 700 12px sans-serif; fill: #26334a; }
+      .small { font: 12px sans-serif; fill: #617087; }
+      .run-step { font: 600 12px sans-serif; fill: #ffffff; }
+      .flow-blue { fill: none; stroke: #2867b2; stroke-width: 3; marker-end: url(#arrow-blue); }
+      .flow-orange { fill: none; stroke: #d46b28; stroke-width: 3; marker-end: url(#arrow-orange); }
+      .run-line { fill: none; stroke: #ffffff; stroke-width: 2.5; marker-end: url(#arrow-white); }
+    </style>
+  </defs>
+
+  <g inkscape:groupmode="layer" inkscape:label="Background" id="background">
+    <rect x="0" y="0" width="900" height="1200" fill="#f5f7fb"/>
+    <text x="50" y="50" class="page-title">Robot HAL architecture</text>
+    <text x="50" y="76" class="page-subtitle">Vertical public-interface view and one-cycle orchestration</text>
+
+    <!-- HAL enclosure -->
+    <rect x="40" y="105" width="820" height="1035" rx="24" fill="#ffffff" stroke="#29364d" stroke-width="4"/>
+    <path d="M64,105 H836 A24,24 0 0 1 860,129 V182 H40 V129 A24,24 0 0 1 64,105" fill="#29364d"/>
+    <text x="70" y="140" class="hal-title">HAL · Hal&lt;LLI, RI, HLI&gt;</text>
+    <text x="70" y="164" class="hal-subtitle">Owns and coordinates all three interfaces</text>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Connections" id="connections">
+    <!-- HLI <-> RI -->
+    <path d="M430,478 L430,528" class="flow-orange"/>
+    <path d="M505,528 L505,478" class="flow-blue"/>
+    <!-- RI <-> LLI -->
+    <path d="M430,804 L430,854" class="flow-orange"/>
+    <path d="M505,854 L505,804" class="flow-blue"/>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="HAL orchestration" id="hal-orchestration">
+    <!-- run rail -->
+    <rect x="65" y="207" width="185" height="875" rx="16" fill="#29364d"/>
+    <text x="157" y="241" text-anchor="middle" class="hal-title">Hal::run()</text>
+    <text x="157" y="264" text-anchor="middle" class="hal-subtitle">one control cycle</text>
+
+    <g id="run-steps">
+      <circle cx="92" cy="306" r="15" fill="#d46b28"/><text x="92" y="311" text-anchor="middle" class="run-step">1</text>
+      <text x="118" y="311" class="run-step">lli.read(ri)</text>
+      <path d="M92,324 L92,349" class="run-line"/>
+
+      <circle cx="92" cy="375" r="15" fill="#27835c"/><text x="92" y="380" text-anchor="middle" class="run-step">2</text>
+      <text x="118" y="380" class="run-step">ri.checkState()</text>
+      <path d="M92,393 L92,418" class="run-line"/>
+
+      <circle cx="92" cy="444" r="15" fill="#2867b2"/><text x="92" y="449" text-anchor="middle" class="run-step">3</text>
+      <text x="118" y="449" class="run-step">hli.write(ri)</text>
+      <path d="M92,462 L92,487" class="run-line"/>
+
+      <circle cx="92" cy="513" r="15" fill="#2867b2"/><text x="92" y="518" text-anchor="middle" class="run-step">4</text>
+      <text x="118" y="518" class="run-step">hli.read(ri)</text>
+      <path d="M92,531 L92,556" class="run-line"/>
+
+      <circle cx="92" cy="582" r="15" fill="#27835c"/><text x="92" y="587" text-anchor="middle" class="run-step">5</text>
+      <text x="118" y="587" class="run-step">checkReference()</text>
+      <path d="M92,600 L92,625" class="run-line"/>
+
+      <circle cx="92" cy="651" r="15" fill="#27835c"/><text x="92" y="656" text-anchor="middle" class="run-step">6</text>
+      <text x="118" y="648" class="run-step">compute</text>
+      <text x="118" y="663" class="run-step">Commands()</text>
+      <path d="M92,669 L92,694" class="run-line"/>
+
+      <circle cx="92" cy="720" r="15" fill="#27835c"/><text x="92" y="725" text-anchor="middle" class="run-step">7</text>
+      <text x="118" y="725" class="run-step">checkCommands()</text>
+      <path d="M92,738 L92,763" class="run-line"/>
+
+      <circle cx="92" cy="789" r="15" fill="#d46b28"/><text x="92" y="794" text-anchor="middle" class="run-step">8</text>
+      <text x="118" y="794" class="run-step">lli.write(ri)</text>
+    </g>
+
+    <line x1="82" y1="835" x2="228" y2="835" stroke="#60708a"/>
+    <text x="157" y="865" text-anchor="middle" class="hal-subtitle">Health checks</text>
+
+    <rect x="79" y="885" width="157" height="65" rx="10" fill="#3a4962" stroke="#71819b"/>
+    <text x="157" y="910" text-anchor="middle" class="run-step">checkHighLevel</text>
+    <text x="157" y="927" text-anchor="middle" class="run-step">Interface()</text>
+    <text x="157" y="944" text-anchor="middle" class="hal-subtitle">→ hli.check()</text>
+
+    <rect x="79" y="969" width="157" height="65" rx="10" fill="#3a4962" stroke="#71819b"/>
+    <text x="157" y="994" text-anchor="middle" class="run-step">checkLowLevel</text>
+    <text x="157" y="1011" text-anchor="middle" class="run-step">Interface()</text>
+    <text x="157" y="1028" text-anchor="middle" class="hal-subtitle">→ lli.check()</text>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Public interfaces" id="public-interfaces">
+    <!-- High-level interface -->
+    <g id="high-level-interface">
+      <rect x="285" y="207" width="525" height="271" rx="16" fill="#eef4fc" stroke="#2867b2" stroke-width="2"/>
+      <path d="M301,207 H794 A16,16 0 0 1 810,223 V263 H285 V223 A16,16 0 0 1 301,207" fill="#2867b2"/>
+      <text x="315" y="242" class="component-title">HighLevelInterface</text>
+      <text x="315" y="289" class="component-type">TransportInterface&lt;RobotInterface, Transport&gt;</text>
+      <text x="315" y="320" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="346" class="method">init(const RobotInterface&amp;)</text>
+      <text x="315" y="370" class="method">check() -&gt; bool</text>
+      <text x="315" y="394" class="method">read(RobotInterface&amp;)</text>
+      <text x="315" y="418" class="method">write(const RobotInterface&amp;)</text>
+      <line x1="583" y1="314" x2="583" y2="450" stroke="#b6cae4"/>
+      <text x="610" y="320" class="section">PUBLIC MEMBERS</text>
+      <text x="610" y="347" class="data">Transport transport</text>
+    </g>
+
+    <!-- Robot interface -->
+    <g id="robot-interface">
+      <rect x="285" y="528" width="525" height="276" rx="16" fill="#eef8f3" stroke="#27835c" stroke-width="2"/>
+      <path d="M301,528 H794 A16,16 0 0 1 810,544 V584 H285 V544 A16,16 0 0 1 301,528" fill="#27835c"/>
+      <text x="315" y="563" class="component-title">RobotInterface&lt;...&gt;</text>
+      <text x="315" y="610" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="636" class="method">init() -&gt; bool</text>
+      <text x="315" y="660" class="method">initReferences(const Ref&amp;)</text>
+      <text x="315" y="684" class="method">checkState()</text>
+      <text x="315" y="708" class="method">checkReference()</text>
+      <text x="315" y="732" class="method">computeCommands()</text>
+      <text x="315" y="756" class="method">checkCommands()</text>
+      <line x1="583" y1="604" x2="583" y2="776" stroke="#b5d7c4"/>
+      <text x="610" y="610" class="section">PUBLIC CONTROL MODES</text>
+      <text x="610" y="638" class="data">0 · POSITION_CONTROL</text>
+      <text x="610" y="665" class="data">1 · VELOCITY_CONTROL</text>
+      <text x="610" y="692" class="data">2 · TORQUE_CONTROL</text>
+      <text x="610" y="719" class="data">3 · IMPEDANCE_CONTROL</text>
+      <text x="610" y="746" class="data">4 · CURRENT_CONTROL</text>
+    </g>
+
+    <!-- Low-level interface -->
+    <g id="low-level-interface">
+      <rect x="285" y="854" width="525" height="246" rx="16" fill="#fff5ed" stroke="#d46b28" stroke-width="2"/>
+      <path d="M301,854 H794 A16,16 0 0 1 810,870 V910 H285 V870 A16,16 0 0 1 301,854" fill="#d46b28"/>
+      <text x="315" y="889" class="component-title">LowLevelInterface</text>
+      <text x="315" y="936" class="component-type">TransportInterface&lt;RobotInterface, Transport&gt;</text>
+      <text x="315" y="961" class="section">PUBLIC FUNCTIONS</text>
+      <text x="315" y="985" class="method">init(const RobotInterface&amp;)</text>
+      <text x="315" y="1008" class="method">check() -&gt; bool</text>
+      <text x="315" y="1031" class="method">read(RobotInterface&amp;)</text>
+      <text x="335" y="1050" class="small">Reads feedback from sensors.</text>
+      <text x="315" y="1074" class="method">write(const RobotInterface&amp;)</text>
+      <text x="335" y="1093" class="small">Sends commands to motor drivers.</text>
+    </g>
+  </g>
+
+  <g inkscape:groupmode="layer" inkscape:label="Flow annotations" id="flow-annotations">
+    <rect x="372" y="488" width="116" height="28" rx="7" fill="#fff4eb"/>
+    <text x="430" y="507" text-anchor="middle" class="label">reference</text>
+    <rect x="467" y="488" width="76" height="28" rx="7" fill="#edf4fd"/>
+    <text x="505" y="507" text-anchor="middle" class="label">state</text>
+
+    <rect x="377" y="814" width="106" height="28" rx="7" fill="#fff4eb"/>
+    <text x="430" y="833" text-anchor="middle" class="label">commands</text>
+    <rect x="467" y="814" width="76" height="28" rx="7" fill="#edf4fd"/>
+    <text x="505" y="833" text-anchor="middle" class="label">state</text>
+
+    <text x="547" y="1122" text-anchor="middle" class="small">Everything inside this boundary is coordinated by the HAL</text>
+  </g>
+</svg>
