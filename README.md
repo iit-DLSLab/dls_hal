@@ -194,7 +194,7 @@ The adapter loads its foot-contact thresholds from `aliengo.yaml`. Its default c
 
 ## Configuration
 
-`RobotInterface::init()` is intended to load a YAML configuration from the configured default directory, currently `/usr/share/config/dls_hal`, or from the complete file path stored in `DLS_ROBOT_INTERFACE_PATH`. The current implementation still constructs the default path from an undeclared `config_file` variable, so initialization does not compile until a configuration name is restored as a parameter/member or the default filename is defined.
+`RobotInterface::init(config_file)` loads a YAML configuration from the configured default directory, currently `/usr/share/config/dls_hal`, or from the complete file path stored in `DLS_ROBOT_INTERFACE_PATH`.
 
 Required configuration keys are:
 
@@ -247,4 +247,48 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The robot-interface test is intended to construct a `QuadrupedInterface`, load the example configuration, verify vector sizes and basic access, and call `computeCommands()`. It currently calls `init("quadruped_interface_config")`, which no longer matches the declared no-argument `RobotInterface::init()`.
+### Python bindings
+
+The optional nanobind module exposes the generic robot data model and a
+Python-facing `Hal`. Its low- and high-level interfaces are regular Python
+objects; any missing `init`, `read`, or `write` method is treated as a no-op,
+and a missing `check` method returns `True`.
+
+Install nanobind and enable the module when configuring:
+
+```sh
+python3 -m pip install nanobind
+cmake -S . -B build \
+  -DDLS_HAL_BUILD_PYTHON_BINDINGS=ON \
+  -Dnanobind_DIR="$(python3 -m nanobind --cmake_dir)"
+cmake --build build --target dls_hal_python
+```
+
+Add the directory containing the built module to `PYTHONPATH`, then use it as
+shown below. A runnable version is available in `python/example.py`.
+
+```python
+import dls_hal
+
+class LowLevelInterface:
+    def read(self, robot):
+        robot.state.position = [0.0] * len(robot.state.position)
+
+    def write(self, robot):
+        print(robot.low_level_control.commands.torque)
+
+class HighLevelInterface:
+    def read(self, robot):
+        robot.ref.torque = [1.0] * len(robot.ref.torque)
+
+def main():
+    hal = dls_hal.Hal(LowLevelInterface(), HighLevelInterface())
+    hal.init("quadruped_interface_config")
+    hal.run()
+    print(hal.robot_interface.state.position)
+
+if __name__ == "__main__":
+    main()
+```
+
+The robot-interface test constructs a `QuadrupedInterface`, loads the example configuration, verifies vector sizes and basic access, and calls `computeCommands()`.
