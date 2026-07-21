@@ -11,10 +11,10 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         FastDDSHLInterface();
         ~FastDDSHLInterface();
 
-        void init();
+        void init() override;
 
-        void read(GenericRobotInterface& source);
-        void write(const GenericRobotInterface& source);
+        void read(GenericRobotInterface& source) override;
+        void write(const GenericRobotInterface& source) override;
 
         void writeIMU(const GenericRobotInterface& source);
 
