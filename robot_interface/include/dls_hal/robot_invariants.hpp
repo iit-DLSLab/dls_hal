@@ -8,7 +8,7 @@
 class IMU{
 public:
     IMU();
-    void init(const YAML::Node& config);
+    void init();
     std::string frame_id;
     std::array<double, 4> orientation;
     std::array<double, 3> orientation_rpy;

@@ -3,6 +3,18 @@
 #include <iostream>
 
 IMU::IMU() {}
+
+IMU::init(){
+    frame_id = "";
+    orientation.fill(0.0);
+    orientation_rpy.fill(0.0);
+    orientation_covariance.fill(0.0);
+    angular_velocity.fill(0.0);
+    angular_velocity_covariance.fill(0.0);
+    linear_acceleration.fill(0.0);
+    linear_acceleration_covariance.fill(0.0);
+}
+
 // RobotState
 RobotState::RobotState() {}
 
@@ -20,6 +32,9 @@ void RobotState::init(const YAML::Node& config){
     battery_status = 100.0;
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     imu.resize(config["general"]["n_imus"].as<int>(), IMU());
+    for (size_t i = 0; i < imu.size(); ++i) {
+        imu[i].init();
+    }
 }
 
 // RobotCommands
