@@ -4,7 +4,7 @@
 
 IMU::IMU() {}
 
-IMU::init(){
+void IMU::init(){
     frame_id = "";
     orientation.fill(0.0);
     orientation_rpy.fill(0.0);
