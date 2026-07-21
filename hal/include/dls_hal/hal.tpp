@@ -1,7 +1,10 @@
 #include "dls_hal/hal.hpp"
 
-template <typename LLI, typename RI, typename HLI>
-Hal<LLI, RI, HLI>::Hal()
+#define HAL_TEMPLATE template <typename LLI, typename RI, typename HLI>
+#define HAL_TYPE Hal<LLI, RI, HLI>
+
+HAL_TEMPLATE
+HAL_TYPE::Hal()
     : lli()
     , ri()
     , hli()

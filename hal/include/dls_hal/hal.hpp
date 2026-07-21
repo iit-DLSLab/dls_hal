@@ -1,6 +1,7 @@
 # pragma once
 
 #include "dls_hal/hal_base.hpp"
+
 // LLI: Low-Level Interface
 // RI: Robot Interface
 // HLI: High-Level Interface
@@ -14,9 +15,9 @@ public:
 
     void run() override;
 
-    bool checkHighLevelInterface();
+    bool checkHighLevelInterface() override;
 
-    bool checkLowLevelInterface();
+    bool checkLowLevelInterface() override;
 
 protected:
     LLI lli; // Low-Level Interface for reading/writing to the robot
