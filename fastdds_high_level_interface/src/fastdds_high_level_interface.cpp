@@ -6,7 +6,7 @@ FastDDSHLInterface::FastDDSHLInterface(){};
 
 FastDDSHLInterface::~FastDDSHLInterface(){};
 
-void FastDDSHLInterface::init(){
+void FastDDSHLInterface::init(const GenericRobotInterface& source){
     // input trajectory generator
     input_traj_gen = transport.buildInput<dls2_interface::msg::TrajectoryGenerator>(
     dls::topics::trajectory_generator);

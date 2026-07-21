@@ -31,7 +31,7 @@ void ROBOT_INTERFACE_TYPE::computeCommands(){
 }
 
 ROBOT_INTERFACE_TEMPLATE
-bool ROBOT_INTERFACE_TYPE::init(const std::string& config_file){
+bool ROBOT_INTERFACE_TYPE::init(){
     char * val;
     val = getenv("DLS_ROBOT_INTERFACE_PATH");
     std::string robot_interface_path = DEFAULT_ROBOT_INTERFACE_PATH + std::string("/") + config_file + ".yaml";

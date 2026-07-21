@@ -11,12 +11,14 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         FastDDSHLInterface();
         ~FastDDSHLInterface();
 
-        void init() override;
+        void init(const GenericRobotInterface& source) override;
 
         void read(GenericRobotInterface& source) override;
         void write(const GenericRobotInterface& source) override;
 
         void writeIMU(const GenericRobotInterface& source);
+
+        bool check() override;
 
         dls::ReaderPtr<dls2_interface::msg::TrajectoryGenerator> input_traj_gen;
         dls::ReaderPtr<dls2_interface::msg::DesiredTorques> input_desired_torques;
