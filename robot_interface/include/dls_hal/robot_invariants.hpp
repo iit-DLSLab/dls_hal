@@ -100,8 +100,12 @@ public:
         std::vector<bool> joint_pos_limit_violation;
         std::vector<bool> joint_vel_limit_violation;
         std::vector<bool> joint_torque_limit_violation;
-        std::vector<bool> nan_value_detected;
-        std::vector<bool> inf_value_detected;
+        std::vector<bool> nan_position_detected;
+        std::vector<bool> nan_velocity_detected;
+        std::vector<bool> nan_torque_detected;
+        std::vector<bool> inf_position_detected;
+        std::vector<bool> inf_velocity_detected;
+        std::vector<bool> inf_torque_detected;
         std::vector<bool> motor_overheat_detected;
         bool battery_charge_low;
     } anomalies;

@@ -23,8 +23,12 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.joint_pos_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_vel_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_torque_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.nan_value_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.inf_value_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.nan_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.nan_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.nan_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.inf_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.inf_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.inf_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.battery_charge_low = false;
     limits.init(config);
@@ -38,10 +42,12 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torques[i], -limits.torque_max[i], limits.torque_max[i]);
         anomalies.motor_overheat_detected[i] = checkJointStateLimit(state.motor_temperature[i], limits.motor_temperature_min[i], limits.motor_temperature_max[i]);
-        anomalies.nan_value_detected[i] = checkJointStateNanInf(state.position[i]);
-        anomalies.inf_value_detected[i] = checkJointStateNanInf(state.velocity[i]);
-        anomalies.nan_value_detected[i] = checkJointStateNanInf(state.torques[i]);
-        anomalies.inf_value_detected[i] = checkJointStateNanInf(state.battery_status);
+        anomalies.nan_position_detected[i] = checkJointStateNanInf(state.position[i]);
+        anomalies.inf_position_detected[i] = checkJointStateNanInf(state.position[i]);
+        anomalies.nan_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
+        anomalies.inf_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
+        anomalies.nan_torque_detected[i] = checkJointStateNanInf(state.torques[i]);
+        anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torques[i]);
     }
 
     anomalies.battery_charge_low = (state.battery_status < limits.battery_charge_min);
