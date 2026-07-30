@@ -19,7 +19,6 @@ public:
 
     bool checkLowLevelInterface() override;
 
-protected:
     LLI lli; // Low-Level Interface for reading/writing to the robot
     RI ri; // Robot Interface for managing robot state and commands
     HLI hli; // High-Level Interface for communication with external systems
