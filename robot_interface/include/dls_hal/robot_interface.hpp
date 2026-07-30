@@ -15,15 +15,15 @@ public:
     void computeCommands();
 
     // function initialization
-    bool init(const std::string& config_file);
+    virtual bool init(const std::string& config_file);
 
-    void initReferences(const TRef& ref);
+    virtual void initReferences(const TRef& ref);
 
-    void checkReference();
+    virtual void checkReference();
 
-    void checkState();
+    virtual void checkState();
 
-    void checkCommands();
+    virtual void checkCommands();
     
     TSafety safety; // E-stop, clamping, limit checks
     TRef ref;
