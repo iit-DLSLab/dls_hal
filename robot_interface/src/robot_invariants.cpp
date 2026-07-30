@@ -52,7 +52,7 @@ RobotRef::RobotRef() {}
 
 void RobotRef::init(const YAML::Node& config){
     int num_joints = config["general"]["n_joints"].as<int>();
-    control_mode = config["low_level_control"]["mode"].as<uint32_t>();
+    control_mode = config["robot_interface"]["low_level_control"]["mode"].as<uint32_t>();
     position.resize(num_joints, 0.0);
     velocity.resize(num_joints, 0.0);
     torque.resize(num_joints, 0.0);
@@ -76,7 +76,7 @@ void RobotLimits::init(const YAML::Node& config){
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
     battery_charge_min = 0.0;
 
-    const YAML::Node limits = config["safety"]["limits"];
+    const YAML::Node limits = config["robot_interface"]["safety"]["limits"];
     if (limits) {
         if (limits["position_min"]) position_min = limits["position_min"].as<std::vector<double>>();
         if (limits["position_max"]) position_max = limits["position_max"].as<std::vector<double>>();

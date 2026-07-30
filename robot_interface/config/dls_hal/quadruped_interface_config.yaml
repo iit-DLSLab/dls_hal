@@ -1,10 +1,10 @@
-general:
-  n_joints: 12
-  n_contacts: 4
-  n_imus: 1
+robot_interface:
+  safety:
+    e_stop: 0
+    limits:
+      current_max: [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0]
+      motor_temperature_min: [-20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0, -20.0]
+      motor_temperature_max: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10] 
 
-safety:
-  e_stop: 0
-
-low_level_control:
-  mode: 2
+  low_level_control:
+    mode: 2

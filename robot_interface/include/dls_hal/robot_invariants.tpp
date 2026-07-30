@@ -19,7 +19,7 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
-    e_stop_triggered = config["safety"]["e_stop"].as<int>();
+    e_stop_triggered = config["robot_interface"]["safety"]["e_stop"].as<int>();
     anomalies.joint_pos_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_vel_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_torque_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
@@ -149,7 +149,7 @@ ROBOT_LLC_TYPE::RobotLowLevelControl(){}
 ROBOT_LLC_TEMPLATE
 void ROBOT_LLC_TYPE::init(const YAML::Node& config){
     // Initialization logic for low-level control based on the configuration
-    control_mode = static_cast<CONTROL_MODE>(config["low_level_control"]["mode"].as<int>());
+    control_mode = static_cast<CONTROL_MODE>(config["robot_interface"]["low_level_control"]["mode"].as<int>());
     commands.init(config);
 }
 
