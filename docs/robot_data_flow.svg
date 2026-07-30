@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
+  <title id="title">State and reference flow into commands during one HAL cycle</title>
+  <desc id="desc">Sensors produce RobotState, a high-level application produces RobotRef, and low-level control combines both to produce RobotCommands. Safety checks occur before and after command computation, and an emergency stop replaces computed commands with zeros.</desc>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2374ab"/>
+    </marker>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#16877b"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#cf6a19"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b53b3b"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7656a6"/>
+    </marker>
+    <style>
+      .title { font: 700 30px system-ui, sans-serif; fill: #17202a; }
+      .subtitle { font: 16px system-ui, sans-serif; fill: #536271; }
+      .box-title { font: 700 21px system-ui, sans-serif; fill: #17202a; }
+      .box-text { font: 15px system-ui, sans-serif; fill: #334155; }
+      .small { font: 13px system-ui, sans-serif; fill: #536271; }
+      .step { font: 700 14px system-ui, sans-serif; fill: white; }
+      .arrow-label { font: 600 14px system-ui, sans-serif; }
+      .mono { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="820" fill="#f7f9fc"/>
+  <text x="70" y="58" class="title">One HAL cycle: measured state + desired reference → actuator commands</text>
+  <text x="70" y="88" class="subtitle">The three records have different owners and meanings. Arrows show who updates and consumes each record.</text>
+
+  <!-- External systems -->
+  <g>
+    <rect x="70" y="155" width="250" height="145" rx="16" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+    <text x="195" y="193" text-anchor="middle" class="box-title">Sensors &amp; motor drivers</text>
+    <text x="195" y="226" text-anchor="middle" class="box-text">encoder, effort, temperature,</text>
+    <text x="195" y="250" text-anchor="middle" class="box-text">contact, IMU, battery feedback</text>
+    <text x="195" y="278" text-anchor="middle" class="small">physical robot → HAL</text>
+
+    <rect x="70" y="515" width="250" height="145" rx="16" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+    <text x="195" y="553" text-anchor="middle" class="box-title">High-level application</text>
+    <text x="195" y="586" text-anchor="middle" class="box-text">planner, teleoperation,</text>
+    <text x="195" y="610" text-anchor="middle" class="box-text">trajectory or torque source</text>
+    <text x="195" y="638" text-anchor="middle" class="small">intent → HAL; telemetry ← HAL</text>
+  </g>
+
+  <!-- Core records -->
+  <g>
+    <rect x="455" y="130" width="330" height="205" rx="18" fill="#e7f2fb" stroke="#2374ab" stroke-width="3"/>
+    <text x="620" y="171" text-anchor="middle" class="box-title">RobotState</text>
+    <text x="620" y="199" text-anchor="middle" class="small">what the robot is doing now</text>
+    <text x="485" y="234" class="mono">position, velocity, acceleration</text>
+    <text x="485" y="259" class="mono">torques, status, temperature</text>
+    <text x="485" y="284" class="mono">current, contacts, IMU, battery</text>
+    <text x="485" y="314" class="small">Written by LLI; read by safety, HLI, controller</text>
+
+    <rect x="455" y="490" width="330" height="205" rx="18" fill="#e5f6f2" stroke="#16877b" stroke-width="3"/>
+    <text x="620" y="531" text-anchor="middle" class="box-title">RobotRef</text>
+    <text x="620" y="559" text-anchor="middle" class="small">what the application wants</text>
+    <text x="485" y="594" class="mono">position, velocity, torque</text>
+    <text x="485" y="619" class="mono">kp, ki, kd, control_mode</text>
+    <text x="485" y="649" class="small">Written by HLI; read by safety and controller</text>
+    <text x="485" y="674" class="small">Persists until the next high-level update</text>
+
+    <rect x="1015" y="310" width="320" height="205" rx="18" fill="#fff0e3" stroke="#cf6a19" stroke-width="3"/>
+    <text x="1175" y="351" text-anchor="middle" class="box-title">RobotCommands</text>
+    <text x="1175" y="379" text-anchor="middle" class="small">what the actuator side should receive</text>
+    <text x="1045" y="414" class="mono">position, velocity, torque</text>
+    <text x="1045" y="444" class="small">Owned by low_level_control.commands</text>
+    <text x="1045" y="469" class="small">Written by controller or E-stop</text>
+    <text x="1045" y="494" class="small">Read by the low-level adapter</text>
+  </g>
+
+  <!-- Compute and safety -->
+  <g>
+    <rect x="830" y="300" width="145" height="225" rx="18" fill="#ffffff" stroke="#64748b" stroke-width="2"/>
+    <text x="902" y="338" text-anchor="middle" class="box-title">Control</text>
+    <text x="902" y="368" text-anchor="middle" class="small">check state</text>
+    <text x="902" y="391" text-anchor="middle" class="small">check reference</text>
+    <line x1="855" y1="410" x2="950" y2="410" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="902" y="440" text-anchor="middle" class="small">compute mode</text>
+    <text x="902" y="463" text-anchor="middle" class="small">or E-stop zeros</text>
+    <line x1="855" y1="481" x2="950" y2="481" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="902" y="508" text-anchor="middle" class="small">check commands</text>
+  </g>
+
+  <!-- Main data arrows -->
+  <path d="M 320 220 L 455 220" fill="none" stroke="#2374ab" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="387" y="204" text-anchor="middle" class="arrow-label" fill="#2374ab">1 · LLI.read</text>
+
+  <path d="M 320 580 L 455 580" fill="none" stroke="#16877b" stroke-width="4" marker-end="url(#arrow-teal)"/>
+  <text x="387" y="564" text-anchor="middle" class="arrow-label" fill="#16877b">4 · HLI.read</text>
+
+  <path d="M 785 230 C 825 230, 820 350, 830 365" fill="none" stroke="#2374ab" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="808" y="271" class="step" text-anchor="middle"><tspan fill="#2374ab">2</tspan></text>
+
+  <path d="M 785 585 C 825 585, 820 470, 830 457" fill="none" stroke="#16877b" stroke-width="4" marker-end="url(#arrow-teal)"/>
+  <text x="808" y="552" class="step" text-anchor="middle"><tspan fill="#16877b">5</tspan></text>
+
+  <path d="M 975 412 L 1015 412" fill="none" stroke="#cf6a19" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <text x="995" y="393" text-anchor="middle" class="step"><tspan fill="#cf6a19">6</tspan></text>
+
+  <path d="M 1335 412 L 1370 412 L 1370 735 L 350 735 L 350 340 L 195 340 L 195 300" fill="none" stroke="#cf6a19" stroke-width="4" marker-end="url(#arrow-orange)"/>
+  <text x="790" y="722" text-anchor="middle" class="arrow-label" fill="#cf6a19">7–8 · check commands, then LLI.write → actuators</text>
+
+  <!-- Telemetry path -->
+  <path d="M 540 335 C 510 405, 365 430, 250 515" fill="none" stroke="#2374ab" stroke-width="3" stroke-dasharray="9 7" marker-end="url(#arrow-blue)"/>
+  <text x="415" y="421" text-anchor="middle" class="arrow-label" fill="#2374ab">3 · HLI.write publishes telemetry</text>
+
+  <!-- E-stop -->
+  <rect x="835" y="585" width="135" height="60" rx="12" fill="#fdeaea" stroke="#b53b3b" stroke-width="2"/>
+  <text x="902" y="611" text-anchor="middle" class="box-text" fill="#8f2828">E-stop</text>
+  <text x="902" y="632" text-anchor="middle" class="small">overrides compute</text>
+  <path d="M 902 585 L 902 525" fill="none" stroke="#b53b3b" stroke-width="3" marker-end="url(#arrow-red)"/>
+
+  <!-- Diagnostic anomaly path -->
+  <rect x="1015" y="565" width="320" height="110" rx="14" fill="#f1ebf8" stroke="#7656a6" stroke-width="2"/>
+  <text x="1175" y="597" text-anchor="middle" class="box-title">Safety anomalies</text>
+  <text x="1175" y="625" text-anchor="middle" class="small">Per-joint and battery diagnostic flags</text>
+  <text x="1175" y="650" text-anchor="middle" class="small">Recorded by checkState; no automatic E-stop</text>
+  <path d="M 975 500 C 1000 520, 990 595, 1015 610" fill="none" stroke="#7656a6" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#arrow-purple)"/>
+
+  <text x="70" y="780" class="subtitle">Blue = measured feedback · Teal = desired intent · Orange = actuator output · Red = safety override · Purple = diagnostics</text>
+</svg>

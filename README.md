@@ -26,7 +26,7 @@ The `aliengo_hal/` package is included only as a concrete example of binding tho
 `Hal` derives from the abstract `HalBase` and owns one instance of each interface. Its public surface is:
 
 ```cpp
-void init();
+void init(const std::string& robot_interface_config_file);
 void run();
 bool checkHighLevelInterface();
 bool checkLowLevelInterface();
@@ -69,7 +69,7 @@ The high-level interface in the core source derives from this class. `Hal` also 
 Public operations:
 
 ```cpp
-bool init();
+bool init(const std::string& config_file);
 void initReferences(const TRef& ref);
 void checkState();
 void checkReference();
@@ -105,6 +105,121 @@ The base invariant classes provide a common representation that robot-specific t
 | `RobotLowLevelControl` | Control mode, generated commands, and control-law methods |
 
 `GenericRobotInterface` binds the base types directly. `QuadrupedInterface` and `ArmInterface` bind lightweight derived invariant types, providing extension points for robot-family-specific data and behavior.
+
+### State, references, and commands
+
+These records are deliberately separate because they describe three different points in the control pipeline:
+
+![Detailed flow of state, references, and commands](docs/robot_data_flow.svg)
+
+| Record | Meaning | Updated by | Read by | Lifetime |
+| --- | --- | --- | --- | --- |
+| `ri.state` (`TState`) | Best available measurement of the robot now | `lli.read(ri)` | State safety checks, `hli.write(ri)`, and low-level control | Initialized once, then refreshed near the start of every `run()` |
+| `ri.ref` (`TRef`) | Desired motion or effort requested by the high-level application | `hli.read(ri)` or `initReferences()` | Reference safety checks and low-level control | Retained between cycles and replaced or edited when a new reference is read |
+| `ri.low_level_control.commands` (`TCommands`) | Actuator-facing output selected by the current control mode | `computeCommands()` or `safety.eSTOP()` | Command safety checks and, by contract, `lli.write(ri)` | Initialized to zero; active fields are recomputed during every `run()` |
+
+The names express direction, not freshness. A reference is not a sensor reading, and a command is not necessarily identical to its reference: impedance control, saturation, filtering, model-based control, or an emergency stop may transform the desired value before it reaches an actuator.
+
+#### `RobotState`: measured feedback
+
+`RobotState` is the feedback snapshot populated by a robot-specific low-level adapter. The base class contains:
+
+| Field | Shape after `init()` | Meaning and initial value |
+| --- | --- | --- |
+| `robot_name` | Scalar string | Robot identifier; initially empty |
+| `names` | `n_joints` strings | Joint identifiers; initially empty |
+| `position`, `velocity`, `acceleration` | `n_joints` doubles each | Measured joint kinematics; initially zero |
+| `torques` | `n_joints` doubles | Measured or estimated joint effort; initially zero |
+| `motor_status_word` | `n_joints` unsigned integers | Driver-specific status bits; initially zero |
+| `motor_temperature`, `motor_current` | `n_joints` doubles each | Motor telemetry; initially zero |
+| `contacts` | `n_contacts` booleans | Contact estimates; initially `false` |
+| `imu` | `n_imus` `IMU` records | Frame, quaternion, RPY, angular velocity, linear acceleration, and 3×3 covariances; numeric fields initially zero |
+| `battery_status` | Scalar double | Battery feedback; initialized to `100.0` |
+
+The base type does not encode physical units, coordinate frames, timestamps, or a validity flag. Integrations must keep those conventions consistent with their transports. It also does not make the snapshot atomic: `lli.read()` is expected to finish updating all relevant fields before the later stages of `run()` consume them.
+
+`checkState()` compares position, velocity, torque, motor temperature, and battery values with `safety.limits` and stores per-joint anomaly flags. It also tests position, velocity, and torque for non-finite values. The check records observations; it does not stop the cycle or automatically set `e_stop_triggered`.
+
+#### Safety anomalies
+
+`ri.safety.anomalies` is a public `RobotSafety::RobotAnomalies` record. It is diagnostic state derived from `ri.state`; it is separate from the measured state, desired reference, generated commands, and `e_stop_triggered`.
+
+| Anomaly field | Shape | Set when |
+| --- | --- | --- |
+| `joint_pos_limit_violation` | `n_joints` booleans | Position is below `position_min` or above `position_max` |
+| `joint_vel_limit_violation` | `n_joints` booleans | Velocity is outside `[-velocity_max, +velocity_max]` |
+| `joint_torque_limit_violation` | `n_joints` booleans | Measured torque is outside `[-torque_max, +torque_max]` |
+| `nan_position_detected`, `nan_velocity_detected`, `nan_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
+| `inf_position_detected`, `inf_velocity_detected`, `inf_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
+| `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
+| `battery_charge_low` | One boolean | `battery_status` is below `battery_charge_min` |
+
+All flags start as `false`. `checkState()` overwrites the flags for each inspected joint and overwrites `battery_charge_low`, so anomalies describe the latest check rather than a latched history. A violation that disappears on the next state sample is cleared. The implementation assumes all per-joint state, limit, and anomaly vectors have the configured `n_joints` length.
+
+Anomalies are informational in the current control path:
+
+- `checkState()` returns `true` regardless of whether it finds a violation.
+- `RobotInterface::checkState()` discards that return value.
+- No anomaly automatically sets `safety.e_stop_triggered`, blocks command computation, or prevents `lli.write()`.
+- Reference and command limit violations are not stored in `RobotAnomalies`.
+
+Consequently, an integration that wants fault escalation must inspect these flags and explicitly set `e_stop_triggered` or implement a derived `RobotSafety::checkState()` policy. There is no aggregate `hasAnomaly()` helper at present.
+
+Several current implementation details are worth noting:
+
+- `checkJointStateNanInf()` combines `std::isnan` and `std::isinf`. Both the `nan_*` and `inf_*` flags therefore receive the same result and cannot distinguish NaN from infinity.
+- Despite its name, `motor_overheat_detected` also becomes true for a temperature below the configured minimum.
+- Acceleration, status words, motor current, contacts, and IMU values are not checked. In particular, `current_max` exists in `RobotLimits` but is not used by `checkState()`.
+- `displayAnomalies()` still refers to obsolete `nan_value_detected` and `inf_value_detected` members. Calling that template method will fail to compile until it is updated to use the six current per-signal flags.
+
+#### `RobotRef`: desired behavior
+
+`RobotRef` is the high-level request. All vector fields are sized to `n_joints` and initialized to zero:
+
+| Field | Meaning | Used by current controller |
+| --- | --- | --- |
+| `position` | Desired joint position | Position and impedance modes |
+| `velocity` | Desired joint velocity | Velocity and impedance modes |
+| `torque` | Desired feed-forward joint torque | Torque and impedance modes |
+| `kp`, `kd` | Proportional and derivative gains per joint | Impedance mode |
+| `ki` | Integral gain per joint | Not currently used |
+| `control_mode` | Requested/configured numeric mode | Initialized from YAML, but not currently consulted during command computation |
+
+The controller actually selects its branch from `ri.low_level_control.control_mode`, which is initialized from the same `low_level_control.mode` YAML key. Changing only `ri.ref.control_mode` at runtime therefore does not change modes in the present implementation.
+
+`checkReference()` visits desired position, velocity, and torque values. The current code calls `std::clamp` but does not assign the returned value and accepts the reference as `const`; consequently, it does **not** modify an out-of-range reference. Its boolean return is also not propagated by `RobotInterface::checkReference()`. Treat it as a validation hook that still needs enforcement logic before relying on it as a safety boundary.
+
+#### `RobotCommands`: actuator-facing output
+
+`RobotCommands` contains `position`, `velocity`, and `torque`, each sized to `n_joints` and initialized to zero. It lives inside `ri.low_level_control`, rather than directly in `RobotInterface`, because it is the output of the selected low-level control law:
+
+```text
+ri.state + ri.ref
+        │
+        ▼
+ri.low_level_control.computeCommands(...)
+        │
+        ▼
+ri.low_level_control.commands
+```
+
+Position, velocity, and torque modes copy only their corresponding reference vector. Impedance mode computes the torque vector from measured and desired position/velocity plus feed-forward torque. Fields not written by the active mode keep their previous values, so a low-level adapter should interpret commands according to `low_level_control.control_mode`, not assume every vector was refreshed.
+
+If `safety.e_stop_triggered` is true, computation is bypassed and all three command vectors are filled with zero. `computeCommands()` then calls `checkCommands()`, and the outer `Hal::run()` calls it once more. As with reference checking, the current command check calls `std::clamp` without storing its result, so it does not presently saturate commands.
+
+The generic adapter contract is that `lli.write(ri)` consumes `ri.low_level_control.commands`. The current `AliengoLLI::write()` instead maps `ri.ref.position`, `velocity`, `kp`, `kd`, and `torque` directly into Unitree `LowCmd`. That bypasses computed commands and the E-stop command vectors; it is an implementation exception to fix before treating the generic command path as enforced on Aliengo.
+
+### Per-cycle data timeline
+
+One call to `Hal::run()` creates this ordering guarantee:
+
+1. Complete the state snapshot and inspect its anomalies.
+2. Publish that state before receiving the next reference.
+3. Read and inspect the reference.
+4. Compute commands from the state and reference from this same cycle, unless E-stop supplies zero commands.
+5. Inspect and send the resulting actuator output.
+
+No synchronization, deadline, sequence number, or stale-data policy is implemented by the three records themselves. Those concerns belong in the transport adapters or in robot-specific derived types.
 
 ### Control modes
 
@@ -194,7 +309,7 @@ The adapter loads its foot-contact thresholds from `aliengo.yaml`. Its default c
 
 ## Configuration
 
-`RobotInterface::init(config_file)` loads a YAML configuration from the configured default directory, currently `/usr/share/config/dls_hal`, or from the complete file path stored in `DLS_ROBOT_INTERFACE_PATH`.
+`RobotInterface::init(config_file)` loads a YAML configuration from the configured default directory, currently `/usr/share/config/dls_hal`, or from the directory stored in `DLS_ROBOT_INTERFACE_PATH`. The argument is a configuration basename: the implementation appends `.yaml`.
 
 Required configuration keys are:
 
