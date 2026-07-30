@@ -8,7 +8,7 @@ add_library(${PROJECT_NAME} SHARED
 set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_link_libraries(${PROJECT_NAME}
-INTERFACE
+PUBLIC
     transport_interfaces
 PUBLIC
     robot_interface
