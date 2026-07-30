@@ -75,4 +75,15 @@ void RobotLimits::init(const YAML::Node& config){
     motor_temperature_min.resize(num_joints, -std::numeric_limits<double>::max());
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
     battery_charge_min = 0.0;
+
+    const YAML::Node limits = config["safety"]["limits"];
+    if (limits) {
+        if (limits["position_min"]) position_min = limits["position_min"].as<std::vector<double>>();
+        if (limits["position_max"]) position_max = limits["position_max"].as<std::vector<double>>();
+        if (limits["velocity_max"]) velocity_max = limits["velocity_max"].as<std::vector<double>>();
+        if (limits["torque_max"]) torque_max = limits["torque_max"].as<std::vector<double>>();
+        if (limits["current_max"]) current_max = limits["current_max"].as<std::vector<double>>();
+        if (limits["motor_temperature_min"]) motor_temperature_min = limits["motor_temperature_min"].as<std::vector<double>>();
+        if (limits["motor_temperature_max"]) motor_temperature_max = limits["motor_temperature_max"].as<std::vector<double>>();
+    }
 }
