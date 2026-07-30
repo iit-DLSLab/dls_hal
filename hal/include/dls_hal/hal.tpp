@@ -1,4 +1,5 @@
 #include "dls_hal/hal.hpp"
+#include "dls_hal/config_interface_path.hpp"
 
 #define HAL_TEMPLATE template <typename LLI, typename RI, typename HLI>
 #define HAL_TYPE Hal<LLI, RI, HLI>
@@ -15,11 +16,21 @@ Hal<LLI, RI, HLI>::~Hal()
 {}
 
 template <typename LLI, typename RI, typename HLI>
-void Hal<LLI, RI, HLI>::init(const std::string& robot_interface_config_file)
+void Hal<LLI, RI, HLI>::init(const std::string& hal_interface_config_file)
 {
-    ri.init(robot_interface_config_file);
-    lli.init(ri);
-    hli.init(ri);
+    // get yaml file and pass to the interfaces
+    char * val;
+    val = getenv("DLS_HAL_INTERFACE_PATH");
+    std::string hal_interface_path = DEFAULT_DLS_HAL_INTERFACE_PATH + std::string("/") + hal_interface_config_file + ".yaml";
+    if (val != NULL) {
+        hal_interface_path = std::string(val) + "/" + hal_interface_config_file + ".yaml";
+    }
+    std::cout << "Loading robot interface configuration from: " << hal_interface_path << std::endl;
+    YAML::Node config = YAML::LoadFile(hal_interface_path);
+
+    ri.init(config);
+    lli.init(ri, config);
+    hli.init(ri, config);
 }
 
 template <typename LLI, typename RI, typename HLI>

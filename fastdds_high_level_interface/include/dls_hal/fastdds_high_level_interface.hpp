@@ -6,12 +6,13 @@
 #include "dls2/signal/reader.hpp"
 #include "dls2/signal/writer.hpp"
 
+#include "yaml-cpp/yaml.h"
 class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, FastDDSTransport> {
     public:
         FastDDSHLInterface();
         ~FastDDSHLInterface();
 
-        void init(const GenericRobotInterface& source) override;
+        void init(const GenericRobotInterface& source, const YAML::Node& config) override;
 
         void read(GenericRobotInterface& source) override;
         void write(const GenericRobotInterface& source) override;

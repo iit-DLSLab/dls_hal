@@ -2,7 +2,6 @@
 #define ROBOT_INTERFACE_HPP
 
 #include "yaml-cpp/yaml.h"
-#include "dls_hal/config.hpp"
 #include "robot_invariants.hpp"
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits, typename TSafety, typename TLowLevelControl>
@@ -15,7 +14,7 @@ public:
     void computeCommands();
 
     // function initialization
-    virtual bool init(const std::string& config_file);
+    virtual bool init(const YAML::Node& config);
 
     virtual void initReferences(const TRef& ref);
 
