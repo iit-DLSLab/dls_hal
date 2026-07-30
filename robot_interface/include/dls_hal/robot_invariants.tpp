@@ -131,10 +131,10 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
             std::cout << "Joint " << i << " velocity limit violation detected." << std::endl;
         if (anomalies.joint_torque_limit_violation[i])
             std::cout << "Joint " << i << " torque limit violation detected." << std::endl;
-        if (anomalies.nan_value_detected[i])
-            std::cout << "Joint " << i << " NaN value detected." << std::endl;
-        if (anomalies.inf_value_detected[i])
-            std::cout << "Joint " << i << " Inf value detected." << std::endl;
+        if (anomalies.nan_position_detected[i])
+            std::cout << "Joint " << i << " NaN position detected." << std::endl;
+        if (anomalies.inf_position_detected[i])
+            std::cout << "Joint " << i << " Inf position detected." << std::endl;
         if (anomalies.motor_overheat_detected[i])
             std::cout << "Joint " << i << " motor overheat detected." << std::endl;
     }
