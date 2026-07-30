@@ -36,8 +36,9 @@ bool ROBOT_INTERFACE_TYPE::init(const std::string& config_file){
     val = getenv("DLS_ROBOT_INTERFACE_PATH");
     std::string robot_interface_path = DEFAULT_ROBOT_INTERFACE_PATH + std::string("/") + config_file + ".yaml";
     if (val != NULL) {
-        robot_interface_path = val;
+        robot_interface_path = std::string(val) + "/" + config_file + ".yaml";
     }
+    std::cout << "Loading robot interface configuration from: " << robot_interface_path << std::endl;
     YAML::Node config = YAML::LoadFile(robot_interface_path);
     state.init(config);
     ref.init(config);
