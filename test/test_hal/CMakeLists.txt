@@ -1,10 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
-
 set(PLUGIN_NAME test_hal)
-
-project(${PLUGIN_NAME})
-
-add_compile_options("-std=c++2a")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -49,7 +43,6 @@ configure_file(
     @ONLY
 )
 
-message (STATUS "\n\n\n\n\n\n\nTEST_HAL_SHARED_PYTHON: ${TEST_HAL_SHARED_PYTHON}")
 install(
     FILES       plugin/config/scheduler.yaml
     DESTINATION /usr/include/dls2/schedulers/
