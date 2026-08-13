@@ -113,16 +113,17 @@ public:
     TLimits limits;
 };
 
+enum class CONTROL_MODE{
+    POSITION_CONTROL,
+    VELOCITY_CONTROL,
+    TORQUE_CONTROL,
+    IMPEDANCE_CONTROL,
+    CURRENT_CONTROL
+};
+
 template <typename TState, typename TRef, typename TCommands>
 class RobotLowLevelControl{
 public:
-    enum class CONTROL_MODE{
-        POSITION_CONTROL,
-        VELOCITY_CONTROL,
-        TORQUE_CONTROL,
-        IMPEDANCE_CONTROL,
-        CURRENT_CONTROL
-    };
 
     RobotLowLevelControl();
 
