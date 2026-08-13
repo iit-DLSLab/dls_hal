@@ -129,7 +129,7 @@ The names express direction, not freshness. A reference is not a sensor reading,
 | `robot_name` | Scalar string | Robot identifier; initially empty |
 | `names` | `n_joints` strings | Joint identifiers; initially empty |
 | `position`, `velocity`, `acceleration` | `n_joints` doubles each | Measured joint kinematics; initially zero |
-| `torques` | `n_joints` doubles | Measured or estimated joint effort; initially zero |
+| `torque` | `n_joints` doubles | Measured or estimated joint effort; initially zero |
 | `motor_status_word` | `n_joints` unsigned integers | Driver-specific status bits; initially zero |
 | `motor_temperature`, `motor_current` | `n_joints` doubles each | Motor telemetry; initially zero |
 | `contacts` | `n_contacts` booleans | Contact estimates; initially `false` |
@@ -407,3 +407,5 @@ if __name__ == "__main__":
 ```
 
 The robot-interface test constructs a `QuadrupedInterface`, loads the example configuration, verifies vector sizes and basic access, and calls `computeCommands()`.
+
+add info specifically for generic robot interface and fastdddshlinterface
