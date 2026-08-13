@@ -40,14 +40,14 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     for (size_t i = 0; i < state.position.size(); ++i) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
-        anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torques[i], -limits.torque_max[i], limits.torque_max[i]);
+        anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], -limits.torque_max[i], limits.torque_max[i]);
         anomalies.motor_overheat_detected[i] = checkJointStateLimit(state.motor_temperature[i], limits.motor_temperature_min[i], limits.motor_temperature_max[i]);
         anomalies.nan_position_detected[i] = checkJointStateNanInf(state.position[i]);
         anomalies.inf_position_detected[i] = checkJointStateNanInf(state.position[i]);
         anomalies.nan_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
         anomalies.inf_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
-        anomalies.nan_torque_detected[i] = checkJointStateNanInf(state.torques[i]);
-        anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torques[i]);
+        anomalies.nan_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
+        anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
     }
 
     anomalies.battery_charge_low = (state.battery_status < limits.battery_charge_min);

@@ -36,7 +36,7 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_blind_state->msg.joints_position() = source.state.position;
     output_blind_state->msg.joints_velocity() = source.state.velocity;
     output_blind_state->msg.joints_acceleration() = source.state.acceleration;
-    output_blind_state->msg.joints_effort() = source.state.torques;
+    output_blind_state->msg.joints_effort() = source.state.torque;
     output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
     output_blind_state->msg.feet_contact() = source.state.contacts;
     writeIMU(source);

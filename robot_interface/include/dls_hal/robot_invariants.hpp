@@ -30,7 +30,7 @@ public:
     std::vector<double> position;
     std::vector<double> velocity;
     std::vector<double> acceleration;
-    std::vector<double> torques;
+    std::vector<double> torque;
     std::vector<uint32_t> motor_status_word;
     std::vector<double> motor_temperature;
     std::vector<double> motor_current;

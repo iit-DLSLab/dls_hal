@@ -24,7 +24,7 @@ void RobotState::init(const YAML::Node& config){
     position.resize(num_joints, 0.0);
     velocity.resize(num_joints, 0.0);
     acceleration.resize(num_joints, 0.0);
-    torques.resize(num_joints, 0.0);
+    torque.resize(num_joints, 0.0);
     motor_temperature.resize(num_joints, 0.0);
     motor_current.resize(num_joints, 0.0);
     names.resize(num_joints, "");

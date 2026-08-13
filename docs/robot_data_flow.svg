@@ -55,7 +55,7 @@
     <text x="620" y="171" text-anchor="middle" class="box-title">RobotState</text>
     <text x="620" y="199" text-anchor="middle" class="small">what the robot is doing now</text>
     <text x="485" y="234" class="mono">position, velocity, acceleration</text>
-    <text x="485" y="259" class="mono">torques, status, temperature</text>
+    <text x="485" y="259" class="mono">torque, status, temperature</text>
     <text x="485" y="284" class="mono">current, contacts, IMU, battery</text>
     <text x="485" y="314" class="small">Written by LLI; read by safety, HLI, controller</text>
 

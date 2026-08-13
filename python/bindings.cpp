@@ -112,7 +112,7 @@ NB_MODULE(dls_hal, m) {
         .def_rw("position", &RobotState::position)
         .def_rw("velocity", &RobotState::velocity)
         .def_rw("acceleration", &RobotState::acceleration)
-        .def_rw("torques", &RobotState::torques)
+        .def_rw("torque", &RobotState::torque)
         .def_rw("motor_status_word", &RobotState::motor_status_word)
         .def_rw("motor_temperature", &RobotState::motor_temperature)
         .def_rw("motor_current", &RobotState::motor_current)
