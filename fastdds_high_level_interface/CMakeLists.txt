@@ -2,7 +2,7 @@ add_library(fastdds_high_level_interface SHARED
     src/fastdds_high_level_interface.cpp
 )
 # add an alias for the library to be used by other packages
-add_library(transport_interfaces::fastdds_high_level_interface ALIAS fastdds_high_level_interface)
+add_library(${PROJECT_NAME}::fastdds_high_level_interface ALIAS fastdds_high_level_interface)
 
 if (NOT TARGET transport_interfaces::transport_interface)
     find_package(transport_interface REQUIRED)
@@ -15,7 +15,7 @@ target_link_libraries(fastdds_high_level_interface
 PUBLIC
     transport_interfaces::transport_interface
 PUBLIC
-    transport_interfaces::robot_interface
+    ${PROJECT_NAME}::robot_interface
     transport_interfaces::fastdds_transport
 )
 

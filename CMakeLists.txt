@@ -24,3 +24,8 @@ add_subdirectory(test/test_hal)
 if(DLS_HAL_BUILD_PYTHON_BINDINGS)
   add_subdirectory(python)
 endif()
+
+# install cmake config files
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/cmake/
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/cmake
+)

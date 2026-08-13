@@ -4,7 +4,7 @@ add_library(robot_interface
     src/robot_invariants.cpp
 )
 # create an alias for the library to be used by other packages
-add_library(transport_interfaces::robot_interface ALIAS robot_interface)
+add_library(${PROJECT_NAME}::robot_interface ALIAS robot_interface)
 
 target_link_libraries(robot_interface PUBLIC yaml-cpp)
 
