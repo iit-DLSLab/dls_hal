@@ -1,5 +1,3 @@
-set(DEFAULT_DLS_HAL_INTERFACE_PATH "/usr/include/dls2/hardwares")
-
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/include/dls_hal/config_interface_path.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config_interface_path.hpp

@@ -11,7 +11,9 @@ public:
     Hal();
     ~Hal();
 
-    void init(const std::string& robot_interface_config_file) override;
+    void init(   const YAML::Node& robot_interface_config,
+                                const YAML::Node& low_level_interface_config,
+                                const YAML::Node& high_level_interface_config) override;
 
     void run() override;
 
