@@ -1,9 +1,3 @@
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/dls_hal/config_interface_path.hpp.in
-    ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config_interface_path.hpp
-    @ONLY
-)
-
 add_library(dls_hal INTERFACE)
 
 add_library(${PROJECT_NAME}::dls_hal ALIAS dls_hal)

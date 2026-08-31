@@ -8,7 +8,9 @@ HAL_TYPE::Hal()
     : lli()
     , ri()
     , hli()
-{}
+{
+    //TODO check base class of LLI, RI, HLI to ensure they are derived from the correct base classes
+}
 
 template <typename LLI, typename RI, typename HLI>
 Hal<LLI, RI, HLI>::~Hal()
