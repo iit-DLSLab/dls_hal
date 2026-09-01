@@ -8,10 +8,3 @@ target_include_directories(dls_hal INTERFACE
 )
 
 hal_install_target(dls_hal)
-
-install(
-    FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/include/dls_hal/config_interface_path.hpp
-    DESTINATION
-        hardwares/${CMAKE_INSTALL_INCLUDEDIR}/dls_hal
-)
