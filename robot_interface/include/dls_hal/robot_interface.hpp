@@ -15,9 +15,7 @@ public:
 
     // function initialization
     virtual bool init(const YAML::Node& config);
-
-    virtual void initReferences(const TRef& ref);
-
+    
     virtual void checkReference();
 
     virtual void checkState();
