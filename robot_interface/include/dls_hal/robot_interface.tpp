@@ -40,11 +40,6 @@ bool ROBOT_INTERFACE_TYPE::init(const YAML::Node& config){
 }
 
 ROBOT_INTERFACE_TEMPLATE
-void ROBOT_INTERFACE_TYPE::initReferences(const TRef& ref){
-    this->ref = ref;
-}
-
-ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::checkReference(){
     safety.checkReference(ref);
 }

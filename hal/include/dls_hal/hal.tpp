@@ -24,6 +24,13 @@ void Hal<LLI, RI, HLI>::init(   const YAML::Node& robot_interface_config,
     ri.init(robot_interface_config);
     lli.init(ri, low_level_interface_config);
     hli.init(ri, high_level_interface_config);
+
+    // initialize robot reference position with actual robot position, to avoid sudden jumps in the robot motion when starting the application
+    if(checkLowLevelInterface()){
+        lli.read(ri);
+        ri.checkState();
+        ri.ref.initReference(ri.state);
+    }
 }
 
 template <typename LLI, typename RI, typename HLI>
