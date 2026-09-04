@@ -27,8 +27,13 @@ void Hal<LLI, RI, HLI>::init(   const YAML::Node& robot_interface_config,
 }
 
 template <typename LLI, typename RI, typename HLI>
-void Hal<LLI, RI, HLI>::run()
+bool Hal<LLI, RI, HLI>::run()
 {
+    // checking if low level communication is working properly, if not return false
+    if(!checkLowLevelInterface()){
+        return false;
+    }
+
     lli.read(ri);
     ri.checkState();
     hli.write(ri);
@@ -40,6 +45,8 @@ void Hal<LLI, RI, HLI>::run()
     ri.checkCommands();
 
     lli.write(ri);
+
+    return true;
 }
 
 template <typename LLI, typename RI, typename HLI>

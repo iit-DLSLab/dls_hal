@@ -15,7 +15,7 @@ public:
                                 const YAML::Node& low_level_interface_config,
                                 const YAML::Node& high_level_interface_config) override;
 
-    void run() override;
+    bool run() override;
 
     bool checkHighLevelInterface() override;
 
