@@ -87,3 +87,7 @@ void RobotLimits::init(const YAML::Node& config){
         if (limits["motor_temperature_max"]) motor_temperature_max = limits["motor_temperature_max"].as<std::vector<double>>();
     }
 }
+
+void RobotRef::initReference(const RobotState& state){
+    position = state.position;
+}

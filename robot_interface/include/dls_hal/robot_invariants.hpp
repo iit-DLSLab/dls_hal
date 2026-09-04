@@ -53,6 +53,8 @@ public:
     RobotRef();
     void init(const YAML::Node& config);
 
+    void initReference(const RobotState& state);
+
     uint32_t control_mode;
     std::vector<double> position;
     std::vector<double> velocity;
