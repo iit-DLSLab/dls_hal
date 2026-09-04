@@ -16,6 +16,13 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::N
     dls::topics::low_level_estimation::blind_state);
     output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
     dls::topics::low_level_estimation::imu);
+
+    // init inputs
+    input_traj_gen->msg.joints_position().resize(source.ref.position.size(), 0.0);
+    input_traj_gen->msg.joints_velocity().resize(source.ref.velocity.size(), 0.0);
+    input_traj_gen->msg.kp().resize(source.ref.kp.size(), 0.0);
+    input_traj_gen->msg.kd().resize(source.ref.kd.size(), 0.0);
+    input_desired_torques->msg.desired_torques().resize(source.ref.torque.size(), 0.0);
 }
     
 bool FastDDSHLInterface::check(){
