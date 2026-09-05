@@ -51,6 +51,7 @@ public:
     std::vector<double> motor_current;
     std::vector<bool> contacts;
     std::vector<IMU> imu;
+    double torso_temperature;
     std::vector<RobotBattery> battery;
 };
 
