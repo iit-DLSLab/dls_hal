@@ -31,8 +31,10 @@ public:
     double temp_heatsink;
     double temp_pcb;
     double full_v_batt;
+    double charge_percentage;
     uint32_t status;
     uint32_t fault;
+    int id;
 };
 class RobotState{
 public:

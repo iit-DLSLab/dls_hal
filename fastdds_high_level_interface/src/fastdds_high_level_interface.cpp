@@ -16,6 +16,8 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::N
     dls::topics::low_level_estimation::blind_state);
     output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
     dls::topics::low_level_estimation::imu);
+    output_battery_status = transport.buildOutput<dls2_interface::msg::BatteryStatus>(
+    dls::topics::battery_status);
 
     // init inputs
     input_traj_gen->msg.joints_position().resize(source.ref.position.size(), 0.0);
@@ -47,6 +49,16 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
     output_blind_state->msg.feet_contact() = source.state.contacts;
     writeIMU(source);
+    // publish battery status
+    for (size_t i = 0; i < source.state.battery.size(); ++i) {
+        output_battery_status->msg.id() = source.state.battery[i].id;
+        output_battery_status->msg.voltage() = source.state.battery[i].v_batt;
+        output_battery_status->msg.temperature() = source.state.battery[i].temp_batt;
+        output_battery_status->msg.state_of_charge() = source.state.battery[i].charge_percentage;
+        output_battery_status->msg.status() = source.state.battery[i].status;
+        output_battery_status->msg.fault() = source.state.battery[i].fault;
+    }
+
     // TODO add motor current, status word and battery status to blind state
     transport.write();
 }

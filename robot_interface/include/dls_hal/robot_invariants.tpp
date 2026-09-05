@@ -51,7 +51,7 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     }
 
     for (size_t i = 0; i < state.battery.size(); ++i) {
-        anomalies.battery_charge_low[i] = (state.battery[i].v_batt < limits.percentage_battery_charge_min*state.battery[i].full_v_batt);
+        anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
     }
     return true;
 }

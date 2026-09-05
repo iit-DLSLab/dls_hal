@@ -27,6 +27,8 @@ void RobotBattery::init(){
     status = 0;
     fault = 0;
     full_v_batt = 0.0;
+    charge_percentage = 0.0;
+    id = 0;
 }
 
 // RobotState
@@ -46,8 +48,10 @@ void RobotState::init(const YAML::Node& config){
     torso_temperature = 0.0;
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     battery.resize(config["general"]["n_batteries"].as<int>(), RobotBattery());
+    
     for (size_t i = 0; i < battery.size(); ++i) {
         battery[i].init();
+        battery[i].id = i;
         battery[i].full_v_batt = config["general"]["battery_full_voltage"].as<double>();
     }
     imu.resize(config["general"]["n_imus"].as<int>(), IMU());

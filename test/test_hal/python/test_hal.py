@@ -129,10 +129,10 @@ class TestHalApp(PeriodicAppPlugin):
 
     TRAJECTORY_DURATION_S = 1000
     TRAJECTORY_FREQUENCY_HZ = 0.5
-    TRAJECTORY_AMPLITUDE_RAD = 0.15
+    TRAJECTORY_AMPLITUDE_RAD = 0.25
     JOINT_COUNT = 12
-    KP = 1
-    KD = 2
+    KP = 50
+    KD = 5
 
 
 def main() -> None:
