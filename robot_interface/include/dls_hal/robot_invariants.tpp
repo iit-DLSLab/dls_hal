@@ -30,7 +30,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.inf_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.inf_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.battery_charge_low = false;
+    anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     limits.init(config);
 }
 
@@ -50,7 +50,9 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
     }
 
-    anomalies.battery_charge_low = (state.battery_status < limits.battery_charge_min);
+    for (size_t i = 0; i < state.battery.size(); ++i) {
+        anomalies.battery_charge_low[i] = (state.battery[i].v_batt < limits.percentage_battery_charge_min*state.battery[i].full_v_batt);
+    }
     return true;
 }
 

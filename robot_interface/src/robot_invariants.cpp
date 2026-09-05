@@ -15,6 +15,20 @@ void IMU::init(){
     linear_acceleration_covariance.fill(0.0);
 }
 
+RobotBattery::RobotBattery() {}
+
+void RobotBattery::init(){
+    v_batt = 0.0;
+    v_load = 0.0;
+    i_load = 0.0;
+    temp_batt = 0.0;
+    temp_heatsink = 0.0;
+    temp_pcb = 0.0;
+    status = 0;
+    fault = 0;
+    full_v_batt = 0.0;
+}
+
 // RobotState
 RobotState::RobotState() {}
 
@@ -31,6 +45,11 @@ void RobotState::init(const YAML::Node& config){
     robot_name = "";
     battery_status = 100.0;
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
+    battery.resize(config["general"]["n_batteries"].as<int>(), RobotBattery());
+    for (size_t i = 0; i < battery.size(); ++i) {
+        battery[i].init();
+        battery[i].full_v_batt = config["general"]["battery_full_voltage"].as<double>();
+    }
     imu.resize(config["general"]["n_imus"].as<int>(), IMU());
     for (size_t i = 0; i < imu.size(); ++i) {
         imu[i].init();
@@ -74,7 +93,7 @@ void RobotLimits::init(const YAML::Node& config){
     current_max.resize(num_joints, 0.0);
     motor_temperature_min.resize(num_joints, -std::numeric_limits<double>::max());
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
-    battery_charge_min = 0.0;
+    percentage_battery_charge_min = 0.0;
 
     const YAML::Node limits = config["robot_interface"]["safety"]["limits"];
     if (limits) {
@@ -85,6 +104,7 @@ void RobotLimits::init(const YAML::Node& config){
         if (limits["current_max"]) current_max = limits["current_max"].as<std::vector<double>>();
         if (limits["motor_temperature_min"]) motor_temperature_min = limits["motor_temperature_min"].as<std::vector<double>>();
         if (limits["motor_temperature_max"]) motor_temperature_max = limits["motor_temperature_max"].as<std::vector<double>>();
+        if (limits["percentage_battery_charge_min"]) percentage_battery_charge_min = limits["percentage_battery_charge_min"].as<double>();
     }
 }
 

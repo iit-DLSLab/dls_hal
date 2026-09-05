@@ -19,6 +19,21 @@ public:
     std::array<double, 9> linear_acceleration_covariance;
 };
 
+class RobotBattery{
+public:
+    RobotBattery();
+    void init();
+
+    double v_batt;
+    double v_load;
+    double i_load;
+    double temp_batt;
+    double temp_heatsink;
+    double temp_pcb;
+    double full_v_batt;
+    uint32_t status;
+    uint32_t fault;
+};
 class RobotState{
 public:
     RobotState();
@@ -36,7 +51,7 @@ public:
     std::vector<double> motor_current;
     std::vector<bool> contacts;
     std::vector<IMU> imu;
-    double battery_status;
+    std::vector<RobotBattery> battery;
 };
 
 class RobotCommands{
@@ -75,7 +90,7 @@ public:
     std::vector<double> current_max;
     std::vector<double> motor_temperature_min;
     std::vector<double> motor_temperature_max;
-    double battery_charge_min;
+    double percentage_battery_charge_min;
 };
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits>
@@ -109,7 +124,7 @@ public:
         std::vector<bool> inf_velocity_detected;
         std::vector<bool> inf_torque_detected;
         std::vector<bool> motor_overheat_detected;
-        bool battery_charge_low;
+        std::vector<bool> battery_charge_low;
     } anomalies;
 
     TLimits limits;

@@ -152,7 +152,7 @@ The base type does not encode physical units, coordinate frames, timestamps, or 
 | `nan_position_detected`, `nan_velocity_detected`, `nan_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
 | `inf_position_detected`, `inf_velocity_detected`, `inf_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
 | `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
-| `battery_charge_low` | One boolean | `battery_status` is below `battery_charge_min` |
+| `battery_charge_low` | One boolean | `battery_status` is below `percentage_battery_charge_min` |
 
 All flags start as `false`. `checkState()` overwrites the flags for each inspected joint and overwrites `battery_charge_low`, so anomalies describe the latest check rather than a latched history. A violation that disappears on the next state sample is cleared. The implementation assumes all per-joint state, limit, and anomaly vectors have the configured `n_joints` length.
 

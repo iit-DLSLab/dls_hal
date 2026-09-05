@@ -145,7 +145,7 @@ NB_MODULE(dls_hal, m) {
         .def_rw("current_max", &RobotLimits::current_max)
         .def_rw("motor_temperature_min", &RobotLimits::motor_temperature_min)
         .def_rw("motor_temperature_max", &RobotLimits::motor_temperature_max)
-        .def_rw("battery_charge_min", &RobotLimits::battery_charge_min);
+        .def_rw("percentage_battery_charge_min", &RobotLimits::percentage_battery_charge_min);
 
     nb::class_<RobotAnomalies>(m, "RobotAnomalies")
         .def(nb::init<>())
