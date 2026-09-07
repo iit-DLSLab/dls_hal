@@ -7,11 +7,9 @@ FastDDSHLInterface::FastDDSHLInterface(){};
 FastDDSHLInterface::~FastDDSHLInterface(){};
 
 void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::Node& config){
-    // input trajectory generator
-    input_traj_gen = transport.buildInput<dls2_interface::msg::TrajectoryGenerator>(
-    dls::topics::trajectory_generator);
-    input_desired_torques = transport.buildInput<dls2_interface::msg::DesiredTorques>(
-    dls::topics::desired_torques);
+    // input control signal
+    input_control_signal = transport.buildInput<dls2_interface::msg::ControlSignal>(
+    dls::topics::control_signal);
     output_blind_state = transport.buildOutput<dls2_interface::msg::BlindState>(
     dls::topics::low_level_estimation::blind_state);
     output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
@@ -20,11 +18,12 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::N
     dls::topics::battery_status);
 
     // init inputs
-    input_traj_gen->msg.joints_position().resize(source.ref.position.size(), 0.0);
-    input_traj_gen->msg.joints_velocity().resize(source.ref.velocity.size(), 0.0);
-    input_traj_gen->msg.kp().resize(source.ref.kp.size(), 0.0);
-    input_traj_gen->msg.kd().resize(source.ref.kd.size(), 0.0);
-    input_desired_torques->msg.desired_torques().resize(source.ref.torque.size(), 0.0);
+    input_control_signal->msg.joints_position().resize(source.ref.position.size(), 0.0);
+    input_control_signal->msg.joints_velocity().resize(source.ref.velocity.size(), 0.0);
+    input_control_signal->msg.joints_torques().resize(source.ref.torque.size(), 0.0);
+    input_control_signal->msg.kp().resize(source.ref.kp.size(), 0.0);
+    input_control_signal->msg.kd().resize(source.ref.kd.size(), 0.0);
+    input_control_signal->msg.control_mode() = source.ref.control_mode;
     //init outputs
     output_blind_state->msg.joints_position().resize(source.state.position.size(), 0.0);
     output_blind_state->msg.joints_velocity().resize(source.state.velocity.size(), 0.0);
@@ -43,11 +42,12 @@ bool FastDDSHLInterface::check(){
 
 void FastDDSHLInterface::read(GenericRobotInterface& source){
     transport.read();
-    source.ref.position = input_traj_gen->msg.joints_position();
-    source.ref.velocity = input_traj_gen->msg.joints_velocity();
-    source.ref.torque = input_desired_torques->msg.desired_torques(); // input_traj_gen->msg.joints_effort();
-    source.ref.kp = input_traj_gen->msg.kp();
-    source.ref.kd = input_traj_gen->msg.kd();
+    source.ref.position = input_control_signal->msg.joints_position();
+    source.ref.velocity = input_control_signal->msg.joints_velocity();
+    source.ref.torque = input_control_signal->msg.joints_torques();
+    source.ref.kp = input_control_signal->msg.kp();
+    source.ref.kd = input_control_signal->msg.kd();
+    source.ref.control_mode = input_control_signal->msg.control_mode();
 }
 
 void FastDDSHLInterface::write(const GenericRobotInterface& source){

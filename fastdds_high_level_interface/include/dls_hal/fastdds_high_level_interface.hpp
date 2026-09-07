@@ -21,8 +21,7 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         bool check() override;
 
-        dls::ReaderPtr<dls2_interface::msg::TrajectoryGenerator> input_traj_gen;
-        dls::ReaderPtr<dls2_interface::msg::DesiredTorques> input_desired_torques;
+        dls::ReaderPtr<dls2_interface::msg::ControlSignal> input_control_signal;
         dls::WriterPtr<dls2_interface::msg::BlindState> output_blind_state;
         dls::WriterPtr<dls2_interface::msg::Imu> output_imu;
         dls::WriterPtr<dls2_interface::msg::BatteryStatus> output_battery_status;

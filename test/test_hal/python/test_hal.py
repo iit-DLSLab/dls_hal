@@ -15,11 +15,11 @@ SIGNALS_DOMAIN = 3
 PeriodicAppPlugin = setup_environment(
     package_name=APP_ID,
     module_file=__file__,
-    required_message_modules=("BlindState", "TrajectoryGenerator"),
+    required_message_modules=("BlindState", "ControlSignal"),
 )
 
 import BlindState  # noqa: E402
-import TrajectoryGenerator  # noqa: E402
+import ControlSignal  # noqa: E402
 
 
 class TestHalApp(PeriodicAppPlugin):
@@ -40,8 +40,8 @@ class TestHalApp(PeriodicAppPlugin):
 
         self.writer_example = self.build_output(
             "rt/trajectory_generator",
-            TrajectoryGenerator.TrajectoryGeneratorPubSubType(),
-            TrajectoryGenerator.TrajectoryGenerator(),
+            ControlSignal.ControlSignalPubSubType(),
+            ControlSignal.ControlSignal(),
         )
 
     # commenting to use default activation check from PeriodicAppPlugin
@@ -88,7 +88,6 @@ class TestHalApp(PeriodicAppPlugin):
         self._sequence_id += 1
         msg.joints_position(self._as_double_vector(position))
         msg.joints_velocity(self._as_double_vector(velocity))
-        msg.joints_acceleration(self._as_double_vector(acceleration))
         # set gains
         msg.kp(self._as_double_vector(np.full(self.JOINT_COUNT, self.KP)))
         msg.kd(self._as_double_vector(np.full(self.JOINT_COUNT, self.KD)))
@@ -122,7 +121,7 @@ class TestHalApp(PeriodicAppPlugin):
         return position, velocity, acceleration
 
     def _as_double_vector(self, values: np.ndarray) -> object:
-        vector = TrajectoryGenerator.double_vector()
+        vector = ControlSignal.double_vector()
         for value in values:
             vector.push_back(float(value))
         return vector
