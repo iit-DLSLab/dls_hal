@@ -25,6 +25,16 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::N
     input_traj_gen->msg.kp().resize(source.ref.kp.size(), 0.0);
     input_traj_gen->msg.kd().resize(source.ref.kd.size(), 0.0);
     input_desired_torques->msg.desired_torques().resize(source.ref.torque.size(), 0.0);
+    //init outputs
+    output_blind_state->msg.joints_position().resize(source.state.position.size(), 0.0);
+    output_blind_state->msg.joints_velocity().resize(source.state.velocity.size(), 0.0);
+    output_blind_state->msg.joints_acceleration().resize(source.state.acceleration.size(), 0.0);
+    output_blind_state->msg.joints_effort().resize(source.state.torque.size(), 0.0);
+    output_blind_state->msg.joints_temperature().resize(source.state.motor_temperature.size(), 0.0);
+    output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
+    output_blind_state->msg.motor_current().resize(source.state.motor_current.size(), 0.0);
+    output_blind_state->msg.motor_status_word().resize(source.state.motor_status_word.size(), 0);
+    // TODO: check motor current and motor status word
 }
     
 bool FastDDSHLInterface::check(){
