@@ -58,6 +58,8 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_blind_state->msg.joints_effort() = source.state.torque;
     output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
     output_blind_state->msg.feet_contact() = source.state.contacts;
+    output_blind_state->msg.motor_current() = source.state.motor_current;
+    output_blind_state->msg.motor_status_word() = source.state.motor_status_word;
     writeIMU(source);
     // publish battery status
     for (size_t i = 0; i < source.state.battery.size(); ++i) {
@@ -69,7 +71,6 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
         output_battery_status->msg.fault() = source.state.battery[i].fault;
     }
 
-    // TODO add motor current, status word and battery status to blind state
     transport.write();
 }
 
