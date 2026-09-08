@@ -39,11 +39,11 @@ class TestHalApp(PeriodicAppPlugin):
         )
 
         self.writer_example = self.build_output(
-            "rt/trajectory_generator",
+            "rt/test_hal",
             ControlSignal.ControlSignalPubSubType(),
             ControlSignal.ControlSignal(),
         )
-
+        self.writer_example.data.control_mode(1)
     # commenting to use default activation check from PeriodicAppPlugin
     # def check_activation(self) -> bool:
     #     return True
