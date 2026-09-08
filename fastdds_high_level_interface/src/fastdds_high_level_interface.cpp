@@ -6,7 +6,7 @@ FastDDSHLInterface::FastDDSHLInterface(){};
 
 FastDDSHLInterface::~FastDDSHLInterface(){};
 
-void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::Node& config){
+void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& config){
     // input control signal
     input_control_signal = transport.buildInput<dls2_interface::msg::ControlSignal>(
     dls::topics::control_signal);
@@ -33,7 +33,6 @@ void FastDDSHLInterface::init(const GenericRobotInterface& source, const YAML::N
     output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
     output_blind_state->msg.motor_current().resize(source.state.motor_current.size(), 0.0);
     output_blind_state->msg.motor_status_word().resize(source.state.motor_status_word.size(), 0);
-    // TODO: check motor current and motor status word
 }
     
 bool FastDDSHLInterface::check(){

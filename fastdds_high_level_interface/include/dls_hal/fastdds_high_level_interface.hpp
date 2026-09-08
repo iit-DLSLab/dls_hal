@@ -12,7 +12,7 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         FastDDSHLInterface();
         ~FastDDSHLInterface();
 
-        void init(const GenericRobotInterface& source, const YAML::Node& config) override;
+        void init(GenericRobotInterface& source, const YAML::Node& config) override;
 
         void read(GenericRobotInterface& source) override;
         void write(const GenericRobotInterface& source) override;
