@@ -124,6 +124,11 @@ public:
     void displayAnomalies() const;
 
     bool isFungoPressed();
+
+    void triggerEmergencyStop();
+
+    bool isEmergencyStopActive();
+
     // Robot anomalies
     class RobotAnomalies{
     public:
@@ -144,6 +149,7 @@ public:
     TLimits limits;
 
     private:
+        std::mutex e_stop_mutex;
         std::mutex fungo_pressed_mutex;
         void setFungoPressed(bool pressed);
 };

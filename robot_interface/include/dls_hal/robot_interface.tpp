@@ -19,7 +19,7 @@ ROBOT_INTERFACE_TYPE::~RobotInterface(){};
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::computeCommands(){
     // check safety status for e-stop
-    if(safety.e_stop_triggered){
+    if(safety.isEmergencyStopActive()){
         std::cout << "Emergency stop triggered. Using E-stop reference." << std::endl;
         safety.eSTOP(low_level_control.commands);
     }

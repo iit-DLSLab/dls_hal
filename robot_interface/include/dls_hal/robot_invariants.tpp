@@ -153,6 +153,20 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
     if (anomalies.battery_charge_low)
         std::cout << "Battery charge is low." << std::endl;
 }
+
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::triggerEmergencyStop() {
+    std::lock_guard<std::mutex> lock(e_stop_mutex);
+    e_stop_triggered = true;
+}
+
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::isEmergencyStopActive() {
+    std::lock_guard<std::mutex> lock(e_stop_mutex);
+    return e_stop_triggered;
+}
+
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::isFungoPressed() {
     std::lock_guard<std::mutex> lock(fungo_pressed_mutex);
