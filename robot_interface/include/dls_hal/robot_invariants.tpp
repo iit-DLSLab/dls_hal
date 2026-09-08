@@ -31,11 +31,13 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.inf_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
+    anomalies.fungo_pressed = false;
     limits.init(config);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
+    setFungoPressed(false);
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
@@ -48,12 +50,20 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.inf_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
         anomalies.nan_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
         anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
+        if (state.motor_status_word[i] == state.const_motor_status_words.fungo_pressed) {
+            setFungoPressed(true);
+            break;
+        }
     }
-
     for (size_t i = 0; i < state.battery.size(); ++i) {
         anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
     }
     return true;
+}
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::setFungoPressed(bool pressed) {
+    std::lock_guard<std::mutex> lock(fungo_pressed_mutex);
+    anomalies.fungo_pressed = pressed;
 }
 
 ROBOT_SAFETY_TEMPLATE
@@ -142,6 +152,11 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
     }
     if (anomalies.battery_charge_low)
         std::cout << "Battery charge is low." << std::endl;
+}
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::isFungoPressed() {
+    std::lock_guard<std::mutex> lock(fungo_pressed_mutex);
+    return anomalies.fungo_pressed;
 }
 
 // RobotLowLevelControl

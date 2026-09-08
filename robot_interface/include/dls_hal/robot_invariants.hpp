@@ -4,6 +4,7 @@
 #include "vector"
 #include "stdint.h"
 #include "yaml-cpp/yaml.h"
+#include <mutex>
 
 class IMU{
 public:
@@ -36,6 +37,12 @@ public:
     uint32_t fault;
     int id;
 };
+
+class MotorStatusWords{
+public:
+    unsigned int fungo_pressed=0;
+};
+
 class RobotState{
 public:
     RobotState();
@@ -55,6 +62,7 @@ public:
     std::vector<IMU> imu;
     double torso_temperature;
     std::vector<RobotBattery> battery;
+    MotorStatusWords const_motor_status_words;
 };
 
 class RobotCommands{
@@ -114,6 +122,8 @@ public:
     virtual bool checkJointStateNanInf(double value);
 
     void displayAnomalies() const;
+
+    bool isFungoPressed();
     // Robot anomalies
     class RobotAnomalies{
     public:
@@ -128,9 +138,14 @@ public:
         std::vector<bool> inf_torque_detected;
         std::vector<bool> motor_overheat_detected;
         std::vector<bool> battery_charge_low;
+        bool fungo_pressed;
     } anomalies;
 
     TLimits limits;
+
+    private:
+        std::mutex fungo_pressed_mutex;
+        void setFungoPressed(bool pressed);
 };
 
 enum class CONTROL_MODE{
