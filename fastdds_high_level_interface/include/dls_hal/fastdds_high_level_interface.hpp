@@ -25,4 +25,5 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         dls::WriterPtr<dls2_interface::msg::BlindState> output_blind_state;
         dls::WriterPtr<dls2_interface::msg::Imu> output_imu;
         dls::WriterPtr<dls2_interface::msg::BatteryStatus> output_battery_status;
+        dls::WriterPtr<dls2_interface::msg::ControlSignal> output_hal_commands_feedback;
 };

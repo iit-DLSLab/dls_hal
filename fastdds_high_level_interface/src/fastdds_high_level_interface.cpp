@@ -1,6 +1,7 @@
 #include "dls_hal/fastdds_high_level_interface.hpp"
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
+#include <cstdint>
 
 FastDDSHLInterface::FastDDSHLInterface(){};
 
@@ -16,6 +17,8 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     dls::topics::low_level_estimation::imu);
     output_battery_status = transport.buildOutput<dls2_interface::msg::BatteryStatus>(
     dls::topics::battery_status);
+    output_hal_commands_feedback = transport.buildOutput<dls2_interface::msg::ControlSignal>(
+    dls::topics::hal_commands_feedback);
 
     // init inputs
     input_control_signal->msg.joints_position().resize(source.ref.position.size(), 0.0);
@@ -33,6 +36,7 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
     output_blind_state->msg.motor_current().resize(source.state.motor_current.size(), 0.0);
     output_blind_state->msg.motor_status_word().resize(source.state.motor_status_word.size(), 0);
+    output_hal_commands_feedback->msg = input_control_signal->msg;
 }
     
 bool FastDDSHLInterface::check(){
@@ -69,6 +73,14 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
         output_battery_status->msg.status() = source.state.battery[i].status;
         output_battery_status->msg.fault() = source.state.battery[i].fault;
     }
+
+    // publish hal control signal feedback
+    output_hal_commands_feedback->msg.control_mode() = static_cast<std::uint8_t>(source.low_level_control.control_mode);
+    output_hal_commands_feedback->msg.joints_position() = source.low_level_control.commands.position;
+    output_hal_commands_feedback->msg.joints_velocity() = source.low_level_control.commands.velocity;
+    output_hal_commands_feedback->msg.joints_torques() = source.low_level_control.commands.torque;
+    output_hal_commands_feedback->msg.kp() = source.ref.kp;
+    output_hal_commands_feedback->msg.kd() = source.ref.kd;
 
     transport.write();
 }
