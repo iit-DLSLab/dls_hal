@@ -20,32 +20,39 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     e_stop_triggered.store(false, std::memory_order_relaxed);
-    anomalies.joint_pos_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.joint_vel_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.joint_current_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.joint_torque_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.nan_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.nan_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.nan_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.inf_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.inf_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.inf_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.motor_under_temperature_detected.resize(config["general"]["n_joints"].as<int>(), false);
-    anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    const auto n_joint = config["general"]["n_joints"].as<int>();
+    anomalies.joint_pos_limit_violation.resize(n_joint, false);
+    anomalies.joint_vel_limit_violation.resize(n_joint, false);
+    anomalies.joint_current_limit_violation.resize(n_joint, false);
+    anomalies.joint_torque_limit_violation.resize(n_joint, false);
+    anomalies.nan_position_detected.resize(n_joint, false);
+    anomalies.nan_velocity_detected.resize(n_joint, false);
+    anomalies.nan_torque_detected.resize(n_joint, false);
+    anomalies.inf_position_detected.resize(n_joint, false);
+    anomalies.inf_velocity_detected.resize(n_joint, false);
+    anomalies.inf_torque_detected.resize(n_joint, false);
+    anomalies.nan_position_command_detected.assign(n_joint, false);
+    anomalies.nan_velocity_command_detected.assign(n_joint, false);
+    anomalies.nan_torque_command_detected.assign(n_joint, false);
+    anomalies.inf_position_command_detected.assign(n_joint, false);
+    anomalies.inf_velocity_command_detected.assign(n_joint, false);
+    anomalies.inf_torque_command_detected.assign(n_joint, false);
+    anomalies.motor_under_temperature_detected.resize(n_joint, false);
+    anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
     limits.init(config);
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
+void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     setFungoPressed(false);
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
-        anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
-        anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], -limits.torque_max[i], limits.torque_max[i]);
-        anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motor_current[i], -limits.current_max[i], limits.current_max[i]);
+        anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
+        anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
+        anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motor_current[i], limits.current_min[i], limits.current_max[i]);
         anomalies.motor_overheat_detected[i] = state.motor_temperature[i] > limits.motor_temperature_max[i];
         anomalies.motor_under_temperature_detected[i] = state.motor_temperature[i] < limits.motor_temperature_min[i];
         anomalies.nan_position_detected[i] = std::isnan(state.position[i]);
@@ -61,7 +68,6 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     for (size_t i = 0; i < state.battery.size(); ++i) {
         anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
     }
-    return true;
 }
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setFungoPressed(bool pressed) {
@@ -87,44 +93,32 @@ bool ROBOT_SAFETY_TYPE::checkJointStateNanInf(double value) {
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkReference(const TRef& ref) {
-    // Check if reference is within limits, and clamping if necessary
-    for (size_t i = 0; i < ref.position.size(); ++i) {
-        if (ref.position[i] < limits.position_min[i] || ref.position[i] > limits.position_max[i]) {
-            std::clamp(ref.position[i], limits.position_min[i], limits.position_max[i]);
-            return true;
+void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf) {
+    bool is_valid = true;
+    for (size_t i = 0; i < command.size(); ++i) {
+        
+        if (std::isnan(command[i])) {
+            anomaly_nan[i] = true;
+            is_valid = false;
         }
-        if (ref.velocity[i] < -limits.velocity_max[i] || ref.velocity[i] > limits.velocity_max[i]) {
-            std::clamp(ref.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
-            return true;
+        else if (std::isinf(command[i])) {
+            anomaly_inf[i] = true;
+            is_valid = false;
         }
-        if (ref.torque[i] < -limits.torque_max[i] || ref.torque[i] > limits.torque_max[i]) {
-            std::clamp(ref.torque[i], -limits.torque_max[i], limits.torque_max[i]);
-            return true;
+        else if (command[i] < min_limit[i] || command[i] > max_limit[i]) {
+            command[i] = std::clamp(command[i], min_limit[i], max_limit[i]);
         }
     }
-    return true;
+    if (!is_valid) {
+        triggerEmergencyStop();
+    }
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::checkCommands(const TCommands& commands) {
-    // Check if commands are within limits, and clamping if necessary
-    for (size_t i = 0; i < commands.position.size(); ++i) {
-        if (commands.position[i] < limits.position_min[i] || commands.position[i] > limits.position_max[i]) {
-            std::clamp(commands.position[i], limits.position_min[i], limits.position_max[i]);
-            return true;
-        }
-        if (commands.velocity[i] < -limits.velocity_max[i] || commands.velocity[i] > limits.velocity_max[i]) {
-            std::clamp(commands.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
-            return true;
-        }
-        if (commands.torque[i] < -limits.torque_max[i] || commands.torque[i] > limits.torque_max[i]) {
-            std::clamp(commands.torque[i], -limits.torque_max[i], limits.torque_max[i]);
-            return true;
-        }
-    }
-    
-    return true;
+void ROBOT_SAFETY_TYPE::checkCommands(TCommands& commands) {
+    checkCommand(commands.position, limits.position_min, limits.position_max, anomalies.nan_position_command_detected, anomalies.inf_position_command_detected);
+    checkCommand(commands.velocity, limits.velocity_min, limits.velocity_max, anomalies.nan_velocity_command_detected, anomalies.inf_velocity_command_detected);
+    checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected);
 }
 
 ROBOT_SAFETY_TEMPLATE

@@ -118,9 +118,9 @@ public:
     void init(const YAML::Node& config);
     
     virtual void eSTOP(TCommands& commands);
-    virtual bool checkState(const TState& state);
+    virtual void checkState(const TState& state);
 
-    virtual bool checkCommands(const TCommands& commands);
+    virtual void checkCommands(TCommands& commands);
 
     virtual bool checkJointStateLimit(double value, double min_limit, double max_limit);
     virtual bool checkJointStateNanInf(double value);
@@ -146,6 +146,13 @@ public:
         std::vector<bool> inf_position_detected;
         std::vector<bool> inf_velocity_detected;
         std::vector<bool> inf_torque_detected;
+        // Command anomalies are separate from measured-state anomalies.
+        std::vector<bool> nan_position_command_detected;
+        std::vector<bool> nan_velocity_command_detected;
+        std::vector<bool> nan_torque_command_detected;
+        std::vector<bool> inf_position_command_detected;
+        std::vector<bool> inf_velocity_command_detected;
+        std::vector<bool> inf_torque_command_detected;
         std::vector<bool> motor_overheat_detected;
         std::vector<bool> motor_under_temperature_detected;
         std::vector<bool> battery_charge_low;
@@ -161,6 +168,7 @@ public:
         // control thread; no blocking lock is needed.
         std::atomic_bool e_stop_triggered{false};
         void setFungoPressed(bool pressed);
+        void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf);
 };
 
 enum class CONTROL_MODE{
@@ -189,7 +197,7 @@ public:
 
     CONTROL_MODE control_mode;
 
-    TCommands commands;
+    TCommands commands;          // Accepted values sent to the hardware.
 };
 
 #include "robot_invariants.tpp"
