@@ -46,7 +46,6 @@ bool Hal<LLI, RI, HLI>::run()
     hli.write(ri);
 
     hli.read(ri);
-    ri.checkReference();
 
     ri.computeCommands();
     ri.checkCommands();

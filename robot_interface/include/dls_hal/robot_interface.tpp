@@ -25,8 +25,6 @@ void ROBOT_INTERFACE_TYPE::computeCommands(){
     else{
         low_level_control.computeCommands(state, ref);
     }
-
-    safety.checkCommands(low_level_control.commands);
 }
 
 ROBOT_INTERFACE_TEMPLATE
@@ -36,11 +34,6 @@ bool ROBOT_INTERFACE_TYPE::init(const YAML::Node& config){
     safety.init(config);
     low_level_control.init(config);
     return true;
-}
-
-ROBOT_INTERFACE_TEMPLATE
-void ROBOT_INTERFACE_TYPE::checkReference(){
-    safety.checkReference(ref);
 }
 
 ROBOT_INTERFACE_TEMPLATE

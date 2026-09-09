@@ -116,7 +116,7 @@ public:
     
     virtual void eSTOP(TCommands& commands);
     virtual bool checkState(const TState& state);
-    virtual bool checkReference(const TRef& ref);
+
     virtual bool checkCommands(const TCommands& commands);
 
     virtual bool checkJointStateLimit(double value, double min_limit, double max_limit);
