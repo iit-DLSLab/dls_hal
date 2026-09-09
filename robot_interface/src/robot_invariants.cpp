@@ -100,7 +100,12 @@ void RobotLimits::init(const YAML::Node& config){
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
     percentage_battery_charge_min = 0.0;
 
-    const YAML::Node limits = config["robot_interface"]["safety"]["limits"];
+    const YAML::Node safety = config["robot_interface"]["safety"];
+    const YAML::Node nested_limits = safety["limits"];
+    // Older configurations place the values directly under safety, leaving
+    // limits null. Read those values too instead of retaining zero defaults.
+    const YAML::Node limits = nested_limits.IsDefined() && !nested_limits.IsNull()
+        ? nested_limits : safety;
     if (limits) {
         if (limits["position_min"]) position_min = limits["position_min"].as<std::vector<double>>();
         if (limits["position_max"]) position_max = limits["position_max"].as<std::vector<double>>();

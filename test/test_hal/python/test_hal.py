@@ -25,7 +25,6 @@ import ControlSignal  # noqa: E402
 class TestHalApp(PeriodicAppPlugin):
     def __init__(self) -> None:
         super().__init__(APP_ID, SIGNALS_DOMAIN)
-        self._last_report_time = 0.0
         self._trajectory_start_ns: int | None = None
         self._initial_joint_position: np.ndarray | None = None
         self._sequence_id = 0
@@ -54,11 +53,6 @@ class TestHalApp(PeriodicAppPlugin):
     #     return True
 
     def run(self, timestamp_ns: int) -> None:
-        now = time.time()
-        if now - self._last_report_time >= 1.0:
-            self._last_report_time = now
-            print(f"[{APP_ID}] periodic app running")
-
         # Add your periodic logic here.
         # Example:
         self.read()

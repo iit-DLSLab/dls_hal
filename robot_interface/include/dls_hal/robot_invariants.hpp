@@ -4,7 +4,10 @@
 #include "vector"
 #include "stdint.h"
 #include "yaml-cpp/yaml.h"
-#include <mutex>
+#include <atomic>
+#include <algorithm>
+#include <array>
+#include <cmath>
 
 class IMU{
 public:
@@ -110,8 +113,6 @@ public:
     RobotSafety();
     
     void init(const YAML::Node& config);
-
-    bool e_stop_triggered;
     
     virtual void eSTOP(TCommands& commands);
     virtual bool checkState(const TState& state);
@@ -135,6 +136,7 @@ public:
         std::vector<bool> joint_pos_limit_violation;
         std::vector<bool> joint_vel_limit_violation;
         std::vector<bool> joint_torque_limit_violation;
+        std::vector<bool> joint_current_limit_violation;
         std::vector<bool> nan_position_detected;
         std::vector<bool> nan_velocity_detected;
         std::vector<bool> nan_torque_detected;
@@ -142,15 +144,19 @@ public:
         std::vector<bool> inf_velocity_detected;
         std::vector<bool> inf_torque_detected;
         std::vector<bool> motor_overheat_detected;
+        std::vector<bool> motor_under_temperature_detected;
         std::vector<bool> battery_charge_low;
-        bool fungo_pressed;
+        // Per-cycle status flag written by the control thread and read by the
+        // event thread; it does not publish any accompanying state.
+        std::atomic_bool fungo_pressed{false};
     } anomalies;
 
     TLimits limits;
 
     private:
-        std::mutex e_stop_mutex;
-        std::mutex fungo_pressed_mutex;
+        // One-way latch written by the command thread and read by the real-time
+        // control thread; no blocking lock is needed.
+        std::atomic_bool e_stop_triggered{false};
         void setFungoPressed(bool pressed);
 };
 

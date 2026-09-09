@@ -163,7 +163,15 @@ NB_MODULE(dls_hal, m) {
         .def_rw("inf_torque_detected", &RobotAnomalies::inf_torque_detected)
         .def_rw("motor_overheat_detected",
                 &RobotAnomalies::motor_overheat_detected)
-        .def_rw("battery_charge_low", &RobotAnomalies::battery_charge_low);
+        .def_rw("battery_charge_low", &RobotAnomalies::battery_charge_low)
+        .def_prop_rw(
+            "fungo_pressed",
+            [](const RobotAnomalies& anomalies) {
+                return anomalies.fungo_pressed.load(std::memory_order_relaxed);
+            },
+            [](RobotAnomalies& anomalies, bool pressed) {
+                anomalies.fungo_pressed.store(pressed, std::memory_order_relaxed);
+            });
 
     nb::class_<GenericSafety>(m, "RobotSafety")
         .def(nb::init<>())
@@ -171,8 +179,16 @@ NB_MODULE(dls_hal, m) {
         .def("checkState", &GenericSafety::checkState)
         .def("checkReference", &GenericSafety::checkReference)
         .def("checkCommands", &GenericSafety::checkCommands)
-        .def_rw("e_stop_triggered", &GenericSafety::e_stop_triggered)
-        .def_rw("anomalies", &GenericSafety::anomalies)
+        .def_prop_rw(
+            "e_stop_triggered",
+            [](const GenericSafety& safety) {
+                return safety.e_stop_triggered.load(std::memory_order_relaxed);
+            },
+            [](GenericSafety& safety, bool triggered) {
+                safety.e_stop_triggered.store(triggered, std::memory_order_relaxed);
+            })
+        // The atomic flag makes RobotAnomalies non-copyable; expose it by reference.
+        .def_ro("anomalies", &GenericSafety::anomalies)
         .def_rw("limits", &GenericSafety::limits);
 
     nb::enum_<GenericLowLevelControl::CONTROL_MODE>(m, "ControlMode")

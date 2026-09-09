@@ -14,14 +14,15 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
     static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
     static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
     static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
-    e_stop_triggered = false;
+    e_stop_triggered.store(false, std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
-    e_stop_triggered = config["robot_interface"]["safety"]["e_stop"].as<int>();
+    e_stop_triggered.store(false, std::memory_order_relaxed);
     anomalies.joint_pos_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_vel_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.joint_current_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.joint_torque_limit_violation.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.nan_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.nan_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
@@ -29,9 +30,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.inf_position_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.inf_velocity_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.inf_torque_detected.resize(config["general"]["n_joints"].as<int>(), false);
+    anomalies.motor_under_temperature_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.motor_overheat_detected.resize(config["general"]["n_joints"].as<int>(), false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
-    anomalies.fungo_pressed = false;
+    anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
     limits.init(config);
 }
 
@@ -43,16 +45,17 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], -limits.velocity_max[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], -limits.torque_max[i], limits.torque_max[i]);
-        anomalies.motor_overheat_detected[i] = checkJointStateLimit(state.motor_temperature[i], limits.motor_temperature_min[i], limits.motor_temperature_max[i]);
-        anomalies.nan_position_detected[i] = checkJointStateNanInf(state.position[i]);
-        anomalies.inf_position_detected[i] = checkJointStateNanInf(state.position[i]);
-        anomalies.nan_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
-        anomalies.inf_velocity_detected[i] = checkJointStateNanInf(state.velocity[i]);
-        anomalies.nan_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
-        anomalies.inf_torque_detected[i] = checkJointStateNanInf(state.torque[i]);
+        anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motor_current[i], -limits.current_max[i], limits.current_max[i]);
+        anomalies.motor_overheat_detected[i] = state.motor_temperature[i] > limits.motor_temperature_max[i];
+        anomalies.motor_under_temperature_detected[i] = state.motor_temperature[i] < limits.motor_temperature_min[i];
+        anomalies.nan_position_detected[i] = std::isnan(state.position[i]);
+        anomalies.inf_position_detected[i] = std::isinf(state.position[i]);
+        anomalies.nan_velocity_detected[i] = std::isnan(state.velocity[i]);
+        anomalies.inf_velocity_detected[i] = std::isinf(state.velocity[i]);
+        anomalies.nan_torque_detected[i] = std::isnan(state.torque[i]);
+        anomalies.inf_torque_detected[i] = std::isinf(state.torque[i]);
         if (state.motor_status_word[i] == state.const_motor_status_words.fungo_pressed) {
             setFungoPressed(true);
-            break;
         }
     }
     for (size_t i = 0; i < state.battery.size(); ++i) {
@@ -62,8 +65,7 @@ bool ROBOT_SAFETY_TYPE::checkState(const TState& state) {
 }
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setFungoPressed(bool pressed) {
-    std::lock_guard<std::mutex> lock(fungo_pressed_mutex);
-    anomalies.fungo_pressed = pressed;
+    anomalies.fungo_pressed.store(pressed, std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
@@ -131,7 +133,6 @@ void ROBOT_SAFETY_TYPE::eSTOP(TCommands& commands) {
     std::fill(commands.position.begin(), commands.position.end(), 0.0);
     std::fill(commands.velocity.begin(), commands.velocity.end(), 0.0);
     std::fill(commands.torque.begin(), commands.torque.end(), 0.0);
-    std::cout << "Emergency stop activated. Commands set to safe values." << std::endl;
 }
 
 ROBOT_SAFETY_TEMPLATE
@@ -147,30 +148,30 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
             std::cout << "Joint " << i << " NaN position detected." << std::endl;
         if (anomalies.inf_position_detected[i])
             std::cout << "Joint " << i << " Inf position detected." << std::endl;
+        if (anomalies.motor_under_temperature_detected[i])
+            std::cout << "Motor " << i << " temperature is below minimum." << std::endl;
         if (anomalies.motor_overheat_detected[i])
             std::cout << "Joint " << i << " motor overheat detected." << std::endl;
     }
-    if (anomalies.battery_charge_low)
+    if (std::any_of(anomalies.battery_charge_low.begin(), anomalies.battery_charge_low.end(),
+                    [](bool low) { return low; }))
         std::cout << "Battery charge is low." << std::endl;
 }
 
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::triggerEmergencyStop() {
-    std::lock_guard<std::mutex> lock(e_stop_mutex);
-    e_stop_triggered = true;
+    e_stop_triggered.store(true, std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::isEmergencyStopActive() {
-    std::lock_guard<std::mutex> lock(e_stop_mutex);
-    return e_stop_triggered;
+    return e_stop_triggered.load(std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::isFungoPressed() {
-    std::lock_guard<std::mutex> lock(fungo_pressed_mutex);
-    return anomalies.fungo_pressed;
+    return anomalies.fungo_pressed.load(std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl
