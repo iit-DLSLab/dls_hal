@@ -93,8 +93,11 @@ void RobotLimits::init(const YAML::Node& config){
     // no limits by default, set to extreme values
     position_min.resize(num_joints, -std::numeric_limits<double>::max());
     position_max.resize(num_joints, std::numeric_limits<double>::max());
+    velocity_min.resize(num_joints, -std::numeric_limits<double>::max());
     velocity_max.resize(num_joints, std::numeric_limits<double>::max());
+    torque_min.resize(num_joints, -std::numeric_limits<double>::max());
     torque_max.resize(num_joints, 0.0);
+    current_min.resize(num_joints, 0.0);
     current_max.resize(num_joints, 0.0);
     motor_temperature_min.resize(num_joints, -std::numeric_limits<double>::max());
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
@@ -115,6 +118,12 @@ void RobotLimits::init(const YAML::Node& config){
         if (limits["motor_temperature_min"]) motor_temperature_min = limits["motor_temperature_min"].as<std::vector<double>>();
         if (limits["motor_temperature_max"]) motor_temperature_max = limits["motor_temperature_max"].as<std::vector<double>>();
         if (limits["percentage_battery_charge_min"]) percentage_battery_charge_min = limits["percentage_battery_charge_min"].as<double>();
+    }
+    // Compute velocity, torque, and current minima from their maxima.
+    for (size_t i = 0; i < velocity_max.size(); ++i) {
+        velocity_min[i] = -velocity_max[i];
+        torque_min[i] = -torque_max[i];
+        current_min[i] = -current_max[i];
     }
 }
 

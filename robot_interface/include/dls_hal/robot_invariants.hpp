@@ -99,8 +99,11 @@ public:
     void init(const YAML::Node& config);
     std::vector<double> position_min;
     std::vector<double> position_max;
+    std::vector<double> velocity_min;
     std::vector<double> velocity_max;
+    std::vector<double> torque_min;
     std::vector<double> torque_max;
+    std::vector<double> current_min;
     std::vector<double> current_max;
     std::vector<double> motor_temperature_min;
     std::vector<double> motor_temperature_max;
