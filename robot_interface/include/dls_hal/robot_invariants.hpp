@@ -58,14 +58,14 @@ public:
     std::vector<double> velocity;
     std::vector<double> acceleration;
     std::vector<double> torque;
-    std::vector<uint32_t> motor_status_word;
+    std::vector<uint32_t> motors_status_word;
     std::vector<double> motor_temperature;
-    std::vector<double> motor_current;
+    std::vector<double> motors_current;
     std::vector<bool> contacts;
     std::vector<IMU> imu;
     double torso_temperature;
     std::vector<RobotBattery> battery;
-    MotorStatusWords const_motor_status_words;
+    MotorStatusWords const_motors_status_words;
 };
 
 class RobotCommands{

@@ -52,7 +52,7 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
-        anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motor_current[i], limits.current_min[i], limits.current_max[i]);
+        anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motors_current[i], limits.current_min[i], limits.current_max[i]);
         anomalies.motor_overheat_detected[i] = state.motor_temperature[i] > limits.motor_temperature_max[i];
         anomalies.motor_under_temperature_detected[i] = state.motor_temperature[i] < limits.motor_temperature_min[i];
         anomalies.nan_position_detected[i] = std::isnan(state.position[i]);
@@ -61,7 +61,7 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         anomalies.inf_velocity_detected[i] = std::isinf(state.velocity[i]);
         anomalies.nan_torque_detected[i] = std::isnan(state.torque[i]);
         anomalies.inf_torque_detected[i] = std::isinf(state.torque[i]);
-        if (state.motor_status_word[i] == state.const_motor_status_words.fungo_pressed) {
+        if (state.motors_status_word[i] == state.const_motors_status_words.fungo_pressed) {
             setFungoPressed(true);
         }
     }

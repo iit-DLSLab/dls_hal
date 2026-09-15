@@ -34,8 +34,8 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     output_blind_state->msg.joints_effort().resize(source.state.torque.size(), 0.0);
     output_blind_state->msg.joints_temperature().resize(source.state.motor_temperature.size(), 0.0);
     output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
-    output_blind_state->msg.motor_current().resize(source.state.motor_current.size(), 0.0);
-    output_blind_state->msg.motor_status_word().resize(source.state.motor_status_word.size(), 0);
+    output_blind_state->msg.motors_current().resize(source.state.motors_current.size(), 0.0);
+    output_blind_state->msg.motors_status_word().resize(source.state.motors_status_word.size(), 0);
     output_hal_commands_feedback->msg = input_control_signal->msg;
 }
     
@@ -61,8 +61,8 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_blind_state->msg.joints_effort() = source.state.torque;
     output_blind_state->msg.joints_temperature() = source.state.motor_temperature;
     output_blind_state->msg.feet_contact() = source.state.contacts;
-    output_blind_state->msg.motor_current() = source.state.motor_current;
-    output_blind_state->msg.motor_status_word() = source.state.motor_status_word;
+    output_blind_state->msg.motors_current() = source.state.motors_current;
+    output_blind_state->msg.motors_status_word() = source.state.motors_status_word;
     writeIMU(source);
     // publish battery status
     for (size_t i = 0; i < source.state.battery.size(); ++i) {

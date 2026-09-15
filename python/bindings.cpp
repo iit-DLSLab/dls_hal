@@ -113,9 +113,9 @@ NB_MODULE(dls_hal, m) {
         .def_rw("velocity", &RobotState::velocity)
         .def_rw("acceleration", &RobotState::acceleration)
         .def_rw("torque", &RobotState::torque)
-        .def_rw("motor_status_word", &RobotState::motor_status_word)
+        .def_rw("motors_status_word", &RobotState::motors_status_word)
         .def_rw("motor_temperature", &RobotState::motor_temperature)
-        .def_rw("motor_current", &RobotState::motor_current)
+        .def_rw("motors_current", &RobotState::motors_current)
         .def_rw("contacts", &RobotState::contacts)
         .def_rw("imu", &RobotState::imu)
         .def_rw("battery_status", &RobotState::battery_status);

@@ -130,8 +130,8 @@ The names express direction, not freshness. A reference is not a sensor reading,
 | `names` | `n_joints` strings | Joint identifiers; initially empty |
 | `position`, `velocity`, `acceleration` | `n_joints` doubles each | Measured joint kinematics; initially zero |
 | `torque` | `n_joints` doubles | Measured or estimated joint effort; initially zero |
-| `motor_status_word` | `n_joints` unsigned integers | Driver-specific status bits; initially zero |
-| `motor_temperature`, `motor_current` | `n_joints` doubles each | Motor telemetry; initially zero |
+| `motors_status_word` | `n_joints` unsigned integers | Driver-specific status bits; initially zero |
+| `motor_temperature`, `motors_current` | `n_joints` doubles each | Motor telemetry; initially zero |
 | `contacts` | `n_contacts` booleans | Contact estimates; initially `false` |
 | `imu` | `n_imus` `IMU` records | Frame, quaternion, RPY, angular velocity, linear acceleration, and 3×3 covariances; numeric fields initially zero |
 | `battery_status` | Scalar double | Battery feedback; initialized to `100.0` |
