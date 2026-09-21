@@ -1,4 +1,4 @@
-#include "dls_hal/fastdds_high_level_interface.hpp"
+    #include "dls_hal/fastdds_high_level_interface.hpp"
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
 #include <cstdint>
@@ -28,6 +28,7 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     input_control_signal->msg.kd().resize(source.ref.kd.size(), 0.0);
     input_control_signal->msg.control_mode() = source.ref.control_mode;
     //init outputs
+    output_blind_state->msg.joints_name().resize(source.state.names.size(), "");
     output_blind_state->msg.joints_position().resize(source.state.position.size(), 0.0);
     output_blind_state->msg.joints_velocity().resize(source.state.velocity.size(), 0.0);
     output_blind_state->msg.joints_acceleration().resize(source.state.acceleration.size(), 0.0);
@@ -55,6 +56,7 @@ void FastDDSHLInterface::read(GenericRobotInterface& source){
 
 void FastDDSHLInterface::write(const GenericRobotInterface& source){
     // mapping blind state to source state
+    output_blind_state->msg.joints_name() = source.state.names;
     output_blind_state->msg.joints_position() = source.state.position;
     output_blind_state->msg.joints_velocity() = source.state.velocity;
     output_blind_state->msg.joints_acceleration() = source.state.acceleration;
