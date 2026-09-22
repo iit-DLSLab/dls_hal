@@ -88,7 +88,7 @@ TLowLevelControl low_level_control;
 
 The communication adapters therefore receive the entire robot interface as their `Source`. A low-level adapter writes sensor feedback into `state` and reads generated values from `low_level_control.commands`; a high-level adapter writes desired values into `ref` and reads feedback from `state`.
 
-`computeCommands()` checks `safety.e_stop_triggered`. When it is set, `safety.eSTOP()` zeroes command position, velocity, and torque vectors. Otherwise, the configured low-level controller computes commands from `state` and `ref`. Commands are safety-checked after either path.
+`computeCommands()` checks `safety.anomalies.emergency_stop_triggered`. When it is set, `safety.eSTOP()` zeroes command position, velocity, and torque vectors. Otherwise, the configured low-level controller computes commands from `state` and `ref`. Commands are safety-checked after either path.
 
 ## Robot data model
 
@@ -138,11 +138,11 @@ The names express direction, not freshness. A reference is not a sensor reading,
 
 The base type does not encode physical units, coordinate frames, timestamps, or a validity flag. Integrations must keep those conventions consistent with their transports. It also does not make the snapshot atomic: `lli.read()` is expected to finish updating all relevant fields before the later stages of `run()` consume them.
 
-`checkState()` compares position, velocity, torque, motor temperature, and battery values with `safety.limits` and stores per-joint anomaly flags. It also tests position, velocity, and torque for non-finite values. The check records observations; it does not stop the cycle or automatically set `e_stop_triggered`.
+`checkState()` compares position, velocity, torque, motor temperature, and battery values with `safety.limits` and stores per-joint anomaly flags. It also tests position, velocity, and torque for non-finite values. The check records observations; it does not stop the cycle or automatically set `anomalies.emergency_stop_triggered`.
 
 #### Safety anomalies
 
-`ri.safety.anomalies` is a public `RobotSafety::RobotAnomalies` record. It is diagnostic state derived from `ri.state`; it is separate from the measured state, desired reference, generated commands, and `e_stop_triggered`.
+`ri.safety.anomalies` is a public `RobotSafety::RobotAnomalies` record. It contains diagnostic state derived from `ri.state` and the explicit `emergency_stop_triggered` latch; it is separate from the measured state, desired reference, and generated commands.
 
 | Anomaly field | Shape | Set when |
 | --- | --- | --- |
@@ -160,10 +160,10 @@ Anomalies are informational in the current control path:
 
 - `checkState()` returns `true` regardless of whether it finds a violation.
 - `RobotInterface::checkState()` discards that return value.
-- No anomaly automatically sets `safety.e_stop_triggered`, blocks command computation, or prevents `lli.write()`.
+- No anomaly automatically sets `safety.anomalies.emergency_stop_triggered`, blocks command computation, or prevents `lli.write()`.
 - Reference and command limit violations are not stored in `RobotAnomalies`.
 
-Consequently, an integration that wants fault escalation must inspect these flags and explicitly set `e_stop_triggered` or implement a derived `RobotSafety::checkState()` policy. There is no aggregate `hasAnomaly()` helper at present.
+Consequently, an integration that wants fault escalation must inspect these flags and explicitly set `anomalies.emergency_stop_triggered` or implement a derived `RobotSafety::checkState()` policy. There is no aggregate `hasAnomaly()` helper at present.
 
 Several current implementation details are worth noting:
 
@@ -205,7 +205,7 @@ ri.low_level_control.commands
 
 Position, velocity, and torque modes copy only their corresponding reference vector. Impedance mode computes the torque vector from measured and desired position/velocity plus feed-forward torque. Fields not written by the active mode keep their previous values, so a low-level adapter should interpret commands according to `low_level_control.control_mode`, not assume every vector was refreshed.
 
-If `safety.e_stop_triggered` is true, computation is bypassed and all three command vectors are filled with zero. `computeCommands()` then calls `checkCommands()`, and the outer `Hal::run()` calls it once more. As with reference checking, the current command check calls `std::clamp` without storing its result, so it does not presently saturate commands.
+If `safety.anomalies.emergency_stop_triggered` is true, computation is bypassed and all three command vectors are filled with zero. `computeCommands()` then calls `checkCommands()`, and the outer `Hal::run()` calls it once more. As with reference checking, the current command check calls `std::clamp` without storing its result, so it does not presently saturate commands.
 
 The generic adapter contract is that `lli.write(ri)` consumes `ri.low_level_control.commands`. The current `AliengoLLI::write()` instead maps `ri.ref.position`, `velocity`, `kp`, `kd`, and `torque` directly into Unitree `LowCmd`. That bypasses computed commands and the E-stop command vectors; it is an implementation exception to fix before treating the generic command path as enforced on Aliengo.
 
