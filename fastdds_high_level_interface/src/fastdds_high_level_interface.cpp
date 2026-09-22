@@ -3,9 +3,21 @@
 #include "dls2/domains/domains.hpp"
 #include <cstdint>
 
-FastDDSHLInterface::FastDDSHLInterface(){};
+FastDDSHLInterface::FastDDSHLInterface(const std::string& ID)
+    : event_checker_(ID)
+{}
 
 FastDDSHLInterface::~FastDDSHLInterface(){};
+
+void FastDDSHLInterface::setEventLogger(dls::logging::AppLogger& logger)
+{
+    event_checker_.setEventLogger(logger);
+}
+
+void FastDDSHLInterface::checkEvents(const GenericRobotInterface& source)
+{
+    event_checker_.check(source);
+}
 
 void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& config){
     // input control signal
@@ -83,6 +95,7 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_hal_commands_feedback->msg.kd() = source.ref.kd;
 
     transport.write();
+    checkEvents(source);
 }
 
 void FastDDSHLInterface::writeIMU(const GenericRobotInterface& source){
