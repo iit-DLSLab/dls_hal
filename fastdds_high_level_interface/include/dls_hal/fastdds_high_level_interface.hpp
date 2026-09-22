@@ -8,6 +8,7 @@
 #include "dls2/signal/writer.hpp"
 
 #include "yaml-cpp/yaml.h"
+#include <chrono>
 
 class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, FastDDSTransport> {
     public:

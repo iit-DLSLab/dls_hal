@@ -23,6 +23,7 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     // input control signal
     input_control_signal = transport.buildInput<dls2_interface::msg::ControlSignal>(
     dls::topics::control_signal);
+    input_control_signal->setReceivingDataTimeout(std::chrono::duration<double>(source.safety.getReferencesTimeout()));
     output_blind_state = transport.buildOutput<dls2_interface::msg::BlindState>(
     dls::topics::low_level_estimation::blind_state);
     output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
@@ -57,6 +58,9 @@ bool FastDDSHLInterface::check(){
 
 void FastDDSHLInterface::read(GenericRobotInterface& source){
     transport.read();
+    // Checked every cycle so missing required inputs select damping recovery.
+    // Once triggered the anomaly latches; resumed messages do not clear it.
+    source.safety.setReferencesNotReceived(!transport.areInputsReceivingData());
     source.ref.position = input_control_signal->msg.joints_position();
     source.ref.velocity = input_control_signal->msg.joints_velocity();
     source.ref.torque = input_control_signal->msg.joints_torques();

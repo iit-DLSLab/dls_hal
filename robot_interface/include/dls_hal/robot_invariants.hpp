@@ -137,6 +137,8 @@ public:
 
     bool isEmergencyStopActive() const;
 
+    double getReferencesTimeout() const;
+
     // Robot anomalies
     class RobotAnomalies{
     public:
@@ -188,6 +190,8 @@ public:
         double mechanical_stress_exp_decay;
         double mechanical_stress_max_torque;
         std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
+        // Timeout for detecting missing required high-level input messages.
+        double references_timeout; // seconds since the latest required high-level input message
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

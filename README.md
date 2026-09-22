@@ -335,6 +335,33 @@ Data leaving the HAL:
 
 `check()` succeeds only when transport inputs are receiving data and outputs are unique.
 
+`read()` also updates `safety.anomalies.references_not_received` from
+`transport.areInputsReceivingData()` on every cycle. The flag is set when any
+required input has never received a sample or its last sample has timed out,
+and clears automatically when all required inputs resume. Configure the maximum
+message age in the YAML passed to `FastDDSHLInterface::init()`:
+
+```yaml
+high_level_interface:
+  references_timeout: 1.0 # seconds; finite and strictly positive
+```
+
+The default is one second. Initialization calls the control-signal reader's
+`setReceivingDataTimeout()` to configure its DDS listener's `is_receiving_data_th`
+(rounded up to microseconds). Configure this before polling the reader. Additional
+readers can use the same setter. The same listener timeout is used by `read()`, `check()` and by the
+missing-reference anomaly. A sample is stale when its age reaches the configured
+timeout; an individual cycle without a new sample does not itself count as a
+timeout. A required input that has never received a sample is missing immediately.
+Inputs marked optional are excluded from this check. In Pegasus hardware this
+setting belongs in `pegasus_hal/config/high_level_config.yaml`; the simulator reads
+it from the robot's `interface_config.yaml` instead.
+
+The flag is updated before command computation and `manageAnomalies()`, which
+selects damping recovery while references are missing, unless emergency stop
+or the fungo button takes priority. The event checker reports this condition
+using `MISSING_INPUT` during state publication.
+
 ## AliengoHal example
 
 `dls::AliengoHal` demonstrates a concrete selection of the generic HAL interfaces:

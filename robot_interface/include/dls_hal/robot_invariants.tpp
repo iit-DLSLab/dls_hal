@@ -21,6 +21,10 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.emergency_stop_triggered.store(false, std::memory_order_relaxed);
+    const auto references_timeout_node = config["robot_interface"]["references_timeout"];
+    references_timeout = references_timeout_node ? references_timeout_node.as<double>() : 1.0;
+    if (!std::isfinite(references_timeout) || references_timeout <= 0.0)
+        throw std::invalid_argument("robot_interface.references_timeout must be finite and positive (seconds)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
@@ -216,6 +220,11 @@ bool ROBOT_SAFETY_TYPE::isFungoPressed() const {
 }
 
 ROBOT_SAFETY_TEMPLATE
+double ROBOT_SAFETY_TYPE::getReferencesTimeout() const {
+    return references_timeout;
+}
+
+ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
     checkState(state);
     checkCommands(commands);
@@ -236,7 +245,10 @@ bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setReferencesNotReceived(bool not_received) {
-    anomalies.references_not_received.store(not_received, std::memory_order_relaxed);
+    // Latch: once references time out, the anomaly stays active even if
+    // fresh messages resume, until it is reset (e.g. by safety.init()).
+    if (not_received)
+        anomalies.references_not_received.store(true, std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl
