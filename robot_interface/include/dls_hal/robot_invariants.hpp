@@ -133,7 +133,7 @@ public:
 
     void triggerEmergencyStop();
 
-    void setReferencesNotReceived(bool not_received);
+    void setLostReferences(bool lost);
 
     bool isEmergencyStopActive() const;
 
@@ -169,7 +169,10 @@ public:
         // Per-cycle status flag written by the control thread and read by the
         // event thread; it does not publish any accompanying state.
         std::atomic_bool fungo_pressed;
-        std::atomic_bool references_not_received;
+        // One-way latch: once references are lost, it stays true forever
+        // (reset only by safety.init()), permanently forcing the damping
+        // recovery procedure to take over.
+        std::atomic_bool lost_references;
         bool breaking_mechanics{false};
         // Preserve each joint's first triggering torque while the fault is latched.
         std::vector<std::optional<double>> mechanical_stress_trigger_torque;

@@ -187,7 +187,8 @@ void FastDDSEventChecker::checkRecoveryEvents(const GenericRobotInterface& ri)
         }
         event_logger_->error(message.str(), EventID::BREAKING_MECHANICS);
     }
-    if (anomalies.references_not_received.load(std::memory_order_relaxed))
-        event_logger_->warning("Control reference inputs are not being received.",
-                               EventID::MISSING_INPUT);
+    if (anomalies.lost_references.load(std::memory_order_relaxed))
+        event_logger_->error("Control reference inputs were lost: the damping recovery "
+                              "procedure is taking over and this cannot be undone.",
+                              EventID::MISSING_INPUT);
 }

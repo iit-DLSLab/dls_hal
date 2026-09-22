@@ -84,17 +84,19 @@ void emergencyStopLatches() {
     }
 }
 
-void missingReferences() {
+void lostReferencesLatch() {
     Fixture f;
-    f.safety.anomalies.references_not_received.store(true, std::memory_order_relaxed);
+    f.safety.setLostReferences(true);
     f.recover();
     f.expectRecovery({-2.0, 3.0, 0.0});
     require(!f.safety.isEmergencyStopActive(), "damping latched emergency stop");
-    f.safety.anomalies.references_not_received.store(false, std::memory_order_relaxed);
+
+    // Once lost, references "returning" must not clear the anomaly: the
+    // damping recovery procedure takes over permanently.
+    f.safety.setLostReferences(false);
     f.resetCommands();
     f.recover();
-    require(f.commands.torque == std::vector<double>({7.0, 8.0, 9.0}),
-            "damping continued after references returned");
+    f.expectRecovery({-2.0, 3.0, 0.0});
 }
 
 void mechanicalFault() {
@@ -221,7 +223,7 @@ void invalidExponentialCoefficients() {
 
 void emergencyStopTakesPriority() {
     Fixture f;
-    f.safety.anomalies.references_not_received.store(true, std::memory_order_relaxed);
+    f.safety.anomalies.lost_references.store(true, std::memory_order_relaxed);
     f.safety.anomalies.breaking_mechanics = true;
     f.safety.triggerEmergencyStop();
     f.recover();
@@ -230,7 +232,7 @@ void emergencyStopTakesPriority() {
 
 void fungoTakesPriorityAndClears() {
     Fixture f;
-    f.safety.anomalies.references_not_received.store(true, std::memory_order_relaxed);
+    f.safety.anomalies.lost_references.store(true, std::memory_order_relaxed);
     // A press on any joint must stop all joints.
     f.state.motors_status_word[1] = f.state.const_motors_status_words.fungo_pressed;
     f.recover();
@@ -248,7 +250,7 @@ void invalidCommandsTriggerStop() {
                            std::numeric_limits<double>::infinity()}) {
         for (int field = 0; field < 3; ++field) {
             Fixture f;
-            f.safety.anomalies.references_not_received.store(true, std::memory_order_relaxed);
+            f.safety.anomalies.lost_references.store(true, std::memory_order_relaxed);
             auto& values = field == 0 ? f.commands.position :
                            field == 1 ? f.commands.velocity : f.commands.torque;
             values[1] = invalid;
@@ -261,7 +263,7 @@ void invalidCommandsTriggerStop() {
 
 void invalidVelocityDoesNotProduceInvalidTorque() {
     Fixture f;
-    f.safety.anomalies.references_not_received.store(true, std::memory_order_relaxed);
+    f.safety.anomalies.lost_references.store(true, std::memory_order_relaxed);
     f.state.velocity = {std::numeric_limits<double>::quiet_NaN(),
                         std::numeric_limits<double>::infinity(), -3.0};
     f.recover();
@@ -273,7 +275,7 @@ int main() {
     const std::pair<const char*, void (*)()> tests[] = {
         {"healthy cycle", healthyCycle},
         {"emergency stop latch", emergencyStopLatches},
-        {"missing references and restoration", missingReferences},
+        {"lost references latch", lostReferencesLatch},
         {"mechanical fault", mechanicalFault},
         {"mechanical fault trigger details", mechanicalFaultCapturesTrigger},
         {"mechanical fault position and torque conditions", mechanicalFaultRequiresPositionAndTorque},

@@ -60,7 +60,11 @@ void FastDDSHLInterface::read(GenericRobotInterface& source){
     transport.read();
     // Checked every cycle so missing required inputs select damping recovery.
     // Once triggered the anomaly latches; resumed messages do not clear it.
-    source.safety.setReferencesNotReceived(!transport.areInputsReceivingData());
+    // A startup grace period is required: until the control signal has
+    // arrived at least once, its absence is not yet a lost reference, only
+    // a controller that has not activated/connected yet.
+    if (input_control_signal->hasStartedReceivingData() && !transport.areInputsReceivingData())
+        source.safety.setLostReferences(true);
     source.ref.position = input_control_signal->msg.joints_position();
     source.ref.velocity = input_control_signal->msg.joints_velocity();
     source.ref.torque = input_control_signal->msg.joints_torques();

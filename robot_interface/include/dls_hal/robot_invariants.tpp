@@ -69,7 +69,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         throw std::invalid_argument("Mechanical stress torque threshold must be finite and non-negative");
     anomalies.breaking_mechanics = false;
     anomalies.mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
-    anomalies.references_not_received.store(false, std::memory_order_relaxed);
+    anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
 }
 
@@ -233,8 +233,9 @@ bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands
     if (isEmergencyStopActive() || isFungoPressed()) {
         recovery_estop.run(state,commands);
     }
-    else if (anomalies.references_not_received.load(std::memory_order_relaxed)) {
-        // Handle the case where references are not received
+    else if (anomalies.lost_references.load(std::memory_order_relaxed)) {
+        // References were lost at least once: this is a one-way latch, so
+        // every subsequent cycle keeps entering the damping recovery.
         recovery_damping.run(state,commands);
     }
     else if(anomalies.breaking_mechanics){
@@ -244,11 +245,13 @@ bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::setReferencesNotReceived(bool not_received) {
-    // Latch: once references time out, the anomaly stays active even if
+void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
+    // Latch: once references are lost, the anomaly stays active even if
     // fresh messages resume, until it is reset (e.g. by safety.init()).
-    if (not_received)
-        anomalies.references_not_received.store(true, std::memory_order_relaxed);
+    // From this point on the damping recovery procedure takes over and
+    // cannot be undone.
+    if (lost)
+        anomalies.lost_references.store(true, std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl
