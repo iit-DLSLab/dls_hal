@@ -49,6 +49,7 @@ void RobotState::init(const YAML::Node& config){
     torso_temperature = 0.0;
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     battery.resize(config["general"]["n_batteries"].as<int>(), RobotBattery());
+    const_motors_status_words.fungo_pressed = -1;
     
     for (size_t i = 0; i < battery.size(); ++i) {
         battery[i].init();
