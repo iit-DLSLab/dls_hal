@@ -19,7 +19,7 @@ struct Fixture {
     RobotState state;
     RobotCommands commands;
 
-    Fixture(double mechanical_stress_max_time = -1.0) {
+    Fixture(std::optional<std::pair<double, double>> exponential_coefficients = std::nullopt) {
         auto config = YAML::Load(R"(
 general:
   n_joints: 3
@@ -32,9 +32,11 @@ robot_interface:
       torque_max: [100, 100, 100]
       current_max: [100, 100, 100]
 )");
-        config["robot_interface"]["safety"]["mechanical_stress_max_time"] = mechanical_stress_max_time;
         config["robot_interface"]["safety"]["mechanical_stress_max_torque"] = 10.0;
-        if (mechanical_stress_max_time > 0.0) {
+        if (exponential_coefficients) {
+            config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"]["a"] = exponential_coefficients->first;
+            config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"]["b"] = exponential_coefficients->second;
+
             config["robot_interface"]["safety"]["limits"]["position_min"] = std::vector<double>(3, -1.0);
             config["robot_interface"]["safety"]["limits"]["position_max"] = std::vector<double>(3, 1.0);
         }
@@ -103,7 +105,7 @@ void mechanicalFault() {
 }
 
 void mechanicalFaultCapturesTrigger() {
-    Fixture f(0.001);
+    Fixture f(std::pair{0.001, 0.02});
     f.state.position = {0.0, -2.0, 2.0};
     f.state.torque = {0.0, -12.5, 15.0};
     f.safety.checkState(f.state);
@@ -133,7 +135,7 @@ void mechanicalFaultCapturesTrigger() {
 }
 
 void mechanicalFaultRequiresPositionAndTorque() {
-    Fixture f(0.001);
+    Fixture f(std::pair{0.001, 0.02});
     // Excessive torque inside the limits, position violation alone, and exact boundary.
     f.state.position = {0.0, 2.0, 1.0};
     f.state.torque = {20.0, 0.0, -20.0};
@@ -150,7 +152,7 @@ void mechanicalFaultRequiresPositionAndTorque() {
 
 void mechanicalFaultTimerResets() {
     for (bool reset_position : {true, false}) {
-        Fixture f(0.001);
+        Fixture f(std::pair{0.001, 0.02});
         f.state.position[0] = 2.0;
         f.state.torque[0] = 20.0;
         f.safety.checkState(f.state);
@@ -165,6 +167,55 @@ void mechanicalFaultTimerResets() {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
         f.safety.checkState(f.state);
         require(f.safety.anomalies.breaking_mechanics, "sustained combined violation must trigger stress");
+    }
+}
+
+void exponentialMechanicalStress() {
+    Fixture f(std::pair{1.0, 0.5});
+    f.state.position = {2.0, 2.0, -2.0};
+    f.state.torque = {10.01, 100.0, -100.0};
+    f.safety.checkState(f.state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    f.safety.checkState(f.state);
+    const auto& triggers = f.safety.anomalies.mechanical_stress_trigger_torque;
+    require(!triggers[0] && triggers[1] == 100.0 && triggers[2] == -100.0,
+            "exponential timing must shorten with torque magnitude for both signs");
+    // The current torque, rather than the torque at timer start, sets the deadline.
+    f.state.torque[0] = 100.0;
+    f.safety.checkState(f.state);
+    require(triggers[0] == 100.0, "rising torque did not shorten the deadline");
+
+    Fixture decreasing(std::pair{1.0, 0.5});
+    decreasing.state.position[0] = 2.0;
+    decreasing.state.torque[0] = 100.0;
+    decreasing.safety.checkState(decreasing.state);
+    decreasing.state.torque[0] = 10.01;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    decreasing.safety.checkState(decreasing.state);
+    require(!decreasing.safety.anomalies.breaking_mechanics, "falling torque did not extend the deadline");
+}
+
+void exponentialThresholdAndPositionGate() {
+    Fixture f(std::pair{0.001, 0.5});
+    f.state.position = {2.0, -2.0, 0.0};
+    f.state.torque = {10.0, -9.0, 100.0};
+    f.safety.checkState(f.state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    f.safety.checkState(f.state);
+    require(!f.safety.anomalies.breaking_mechanics,
+            "exponential stress must ignore torque at/below threshold and positions inside limits");
+}
+
+void invalidExponentialCoefficients() {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const auto& coefficients : {std::pair{0.0, 0.5}, std::pair{-1.0, 0.5},
+            std::pair{nan, 0.5}, std::pair{inf, 0.5}, std::pair{1.0, -0.5},
+            std::pair{1.0, nan}, std::pair{1.0, inf}}) {
+        bool rejected = false;
+        try { Fixture f(coefficients); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        require(rejected, "invalid exponential coefficients accepted");
     }
 }
 
@@ -227,6 +278,9 @@ int main() {
         {"mechanical fault trigger details", mechanicalFaultCapturesTrigger},
         {"mechanical fault position and torque conditions", mechanicalFaultRequiresPositionAndTorque},
         {"mechanical fault timer reset", mechanicalFaultTimerResets},
+        {"exponential mechanical stress", exponentialMechanicalStress},
+        {"exponential threshold and position gate", exponentialThresholdAndPositionGate},
+        {"invalid exponential coefficients", invalidExponentialCoefficients},
         {"emergency stop priority", emergencyStopTakesPriority},
         {"fungo priority and release", fungoTakesPriorityAndClears},
         {"invalid commands", invalidCommandsTriggerStop},

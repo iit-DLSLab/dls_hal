@@ -1,5 +1,6 @@
 #include "robot_invariants.hpp"
 #include <iostream>
+#include <stdexcept>
 
 #define ROBOT_SAFETY_TEMPLATE template <typename TState, typename TRef, typename TCommands, typename TLimits>
 #define ROBOT_SAFETY_TYPE RobotSafety<TState, TRef, TCommands, TLimits>
@@ -42,18 +43,26 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
     mechanical_stress_start_per_joint.assign(n_joint, std::nullopt);
-    auto mechanical_stress_max_time_node = config["robot_interface"]["safety"]["mechanical_stress_max_time"];
     auto mechanical_stress_max_torque_node = config["robot_interface"]["safety"]["mechanical_stress_max_torque"];
-    if (mechanical_stress_max_time_node) {
-        mechanical_stress_max_time = mechanical_stress_max_time_node.as<double>();
-    } else {
-        mechanical_stress_max_time = -1.0; // disabled
-    }
     if (mechanical_stress_max_torque_node) {
         mechanical_stress_max_torque = mechanical_stress_max_torque_node.as<double>();
     } else {
         mechanical_stress_max_torque = 0.0; // default value if not specified
     }
+    // Mechanical-stress detection is disabled when exponential coefficients are absent.
+    mechanical_stress_exp_time_scale = 0.0;
+    mechanical_stress_exp_decay = 0.0;
+    const auto coefficients = config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"];
+    if (coefficients) {
+        const double a = coefficients["a"].as<double>();
+        const double b = coefficients["b"].as<double>();
+        if (!std::isfinite(a) || a <= 0.0 || !std::isfinite(b) || b < 0.0)
+            throw std::invalid_argument("Mechanical stress coefficients require finite a > 0 and b >= 0");
+        mechanical_stress_exp_time_scale = a;
+        mechanical_stress_exp_decay = b;
+    }
+    if (!std::isfinite(mechanical_stress_max_torque) || mechanical_stress_max_torque < 0.0)
+        throw std::invalid_argument("Mechanical stress torque threshold must be finite and non-negative");
     anomalies.breaking_mechanics = false;
     anomalies.mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.references_not_received.store(false, std::memory_order_relaxed);
@@ -90,14 +99,20 @@ ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque) {
     const auto now = std::chrono::steady_clock::now();
     auto& stress_start = mechanical_stress_start_per_joint[joint_index];
-    if (mechanical_stress_max_time > 0.0 &&
+    if (mechanical_stress_exp_time_scale > 0.0 &&
         anomalies.joint_pos_limit_violation[joint_index] &&
         std::abs(torque) > mechanical_stress_max_torque) {
         if (!stress_start) {
             stress_start = now;
         }
         const double stress_time = std::chrono::duration<double>(now - *stress_start).count();
-        if (stress_time > mechanical_stress_max_time) {
+        const double excess_torque = std::abs(torque) - mechanical_stress_max_torque;
+        // Use current torque: higher loads shorten the allowable continuous exposure.
+        // Keep b = 0 explicit to avoid 0 * infinity for invalid torque samples.
+        const double allowed_time = mechanical_stress_exp_decay == 0.0
+            ? mechanical_stress_exp_time_scale
+            : mechanical_stress_exp_time_scale * std::exp(-mechanical_stress_exp_decay * excess_torque);
+        if (stress_time > allowed_time) {
             auto& trigger_torque = anomalies.mechanical_stress_trigger_torque[joint_index];
             if (!trigger_torque) trigger_torque = torque;
             anomalies.breaking_mechanics = true;

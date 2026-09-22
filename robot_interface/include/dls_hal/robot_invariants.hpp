@@ -184,7 +184,8 @@ public:
 
         // Anomaly auxiliary variables for anomaly detection
         // breaking_mechanics aux variables
-        double mechanical_stress_max_time;
+        double mechanical_stress_exp_time_scale;
+        double mechanical_stress_exp_decay;
         double mechanical_stress_max_torque;
         std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
 
