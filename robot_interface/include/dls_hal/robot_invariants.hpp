@@ -129,13 +129,13 @@ public:
 
     void displayAnomalies() const;
 
-    bool isFungoPressed();
+    bool isFungoPressed() const;
 
     void triggerEmergencyStop();
 
     void setReferencesNotReceived(bool not_received);
 
-    bool isEmergencyStopActive();
+    bool isEmergencyStopActive() const;
 
     // Robot anomalies
     class RobotAnomalies{
@@ -169,6 +169,8 @@ public:
         std::atomic_bool fungo_pressed;
         std::atomic_bool references_not_received;
         bool breaking_mechanics{false};
+        // Preserve each joint's first triggering torque while the fault is latched.
+        std::vector<std::optional<double>> mechanical_stress_trigger_torque;
     } anomalies;
 
     TLimits limits;

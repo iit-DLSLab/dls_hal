@@ -55,6 +55,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         mechanical_stress_max_torque = 0.0; // default value if not specified
     }
     anomalies.breaking_mechanics = false;
+    anomalies.mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.references_not_received.store(false, std::memory_order_relaxed);
     limits.init(config);
 }
@@ -89,16 +90,21 @@ ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque) {
     const auto now = std::chrono::steady_clock::now();
     auto& stress_start = mechanical_stress_start_per_joint[joint_index];
-    if (mechanical_stress_max_time > 0.0 && std::abs(torque) > mechanical_stress_max_torque) {
+    if (mechanical_stress_max_time > 0.0 &&
+        anomalies.joint_pos_limit_violation[joint_index] &&
+        std::abs(torque) > mechanical_stress_max_torque) {
         if (!stress_start) {
             stress_start = now;
         }
         const double stress_time = std::chrono::duration<double>(now - *stress_start).count();
         if (stress_time > mechanical_stress_max_time) {
+            auto& trigger_torque = anomalies.mechanical_stress_trigger_torque[joint_index];
+            if (!trigger_torque) trigger_torque = torque;
             anomalies.breaking_mechanics = true;
         }
     } else {
-        stress_start.reset(); // reset timer if torque is below threshold
+        // Both conditions must hold continuously for the configured duration.
+        stress_start.reset();
     }
 }
 
@@ -185,12 +191,12 @@ void ROBOT_SAFETY_TYPE::triggerEmergencyStop() {
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::isEmergencyStopActive() {
+bool ROBOT_SAFETY_TYPE::isEmergencyStopActive() const {
     return anomalies.emergency_stop_triggered.load(std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::isFungoPressed() {
+bool ROBOT_SAFETY_TYPE::isFungoPressed() const {
     return anomalies.fungo_pressed.load(std::memory_order_relaxed);
 }
 
