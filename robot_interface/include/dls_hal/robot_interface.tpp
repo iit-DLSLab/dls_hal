@@ -18,13 +18,7 @@ ROBOT_INTERFACE_TYPE::~RobotInterface(){};
 
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::computeCommands(){
-    // check safety status for e-stop
-    if(safety.isEmergencyStopActive()){
-        safety.eSTOP(low_level_control.commands);
-    }
-    else{
-        low_level_control.computeCommands(state, ref);
-    }
+    low_level_control.computeCommands(state, ref);
 }
 
 ROBOT_INTERFACE_TEMPLATE
@@ -44,4 +38,9 @@ void ROBOT_INTERFACE_TYPE::checkState(){
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::checkCommands(){
     safety.checkCommands(low_level_control.commands);
+}
+
+ROBOT_INTERFACE_TEMPLATE
+void ROBOT_INTERFACE_TYPE::manageAnomalies(){
+    safety.manageAnomalies(state, low_level_control.commands);
 }

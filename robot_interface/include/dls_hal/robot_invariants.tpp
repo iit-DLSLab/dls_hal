@@ -14,12 +14,12 @@ ROBOT_SAFETY_TYPE::RobotSafety(){
     static_assert(std::is_base_of<RobotRef, TRef>::value, "TRef must be derived from RobotRef");
     static_assert(std::is_base_of<RobotCommands, TCommands>::value, "TCommands must be derived from RobotCommands");
     static_assert(std::is_base_of<RobotLimits, TLimits>::value, "TLimits must be derived from RobotLimits");
-    e_stop_triggered.store(false, std::memory_order_relaxed);
+    anomalies.emergency_stop_triggered.store(false, std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
-    e_stop_triggered.store(false, std::memory_order_relaxed);
+    anomalies.emergency_stop_triggered.store(false, std::memory_order_relaxed);
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
@@ -41,6 +41,21 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
+    mechanical_stress_start_per_joint.assign(n_joint, std::nullopt);
+    auto mechanical_stress_max_time_node = config["robot_interface"]["safety"]["mechanical_stress_max_time"];
+    auto mechanical_stress_max_torque_node = config["robot_interface"]["safety"]["mechanical_stress_max_torque"];
+    if (mechanical_stress_max_time_node) {
+        mechanical_stress_max_time = mechanical_stress_max_time_node.as<double>();
+    } else {
+        mechanical_stress_max_time = -1.0; // disabled
+    }
+    if (mechanical_stress_max_torque_node) {
+        mechanical_stress_max_torque = mechanical_stress_max_torque_node.as<double>();
+    } else {
+        mechanical_stress_max_torque = 0.0; // default value if not specified
+    }
+    anomalies.breaking_mechanics = false;
+    anomalies.references_not_received.store(false, std::memory_order_relaxed);
     limits.init(config);
 }
 
@@ -64,11 +79,29 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         if (state.motors_status_word[i] == state.const_motors_status_words.fungo_pressed) {
             setFungoPressed(true);
         }
+        checkBreakingMechanics(i, state.torque[i]);
     }
     for (size_t i = 0; i < state.battery.size(); ++i) {
         anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
     }
 }
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque) {
+    const auto now = std::chrono::steady_clock::now();
+    auto& stress_start = mechanical_stress_start_per_joint[joint_index];
+    if (mechanical_stress_max_time > 0.0 && std::abs(torque) > mechanical_stress_max_torque) {
+        if (!stress_start) {
+            stress_start = now;
+        }
+        const double stress_time = std::chrono::duration<double>(now - *stress_start).count();
+        if (stress_time > mechanical_stress_max_time) {
+            anomalies.breaking_mechanics = true;
+        }
+    } else {
+        stress_start.reset(); // reset timer if torque is below threshold
+    }
+}
+
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setFungoPressed(bool pressed) {
     anomalies.fungo_pressed.store(pressed, std::memory_order_relaxed);
@@ -121,13 +154,6 @@ void ROBOT_SAFETY_TYPE::checkCommands(TCommands& commands) {
     checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected);
 }
 
-ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::eSTOP(TCommands& commands) {
-    // Set all commands to zero or safe values
-    std::fill(commands.position.begin(), commands.position.end(), 0.0);
-    std::fill(commands.velocity.begin(), commands.velocity.end(), 0.0);
-    std::fill(commands.torque.begin(), commands.torque.end(), 0.0);
-}
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::displayAnomalies() const {
@@ -155,17 +181,41 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::triggerEmergencyStop() {
-    e_stop_triggered.store(true, std::memory_order_relaxed);
+    anomalies.emergency_stop_triggered.store(true, std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::isEmergencyStopActive() {
-    return e_stop_triggered.load(std::memory_order_relaxed);
+    return anomalies.emergency_stop_triggered.load(std::memory_order_relaxed);
 }
 
 ROBOT_SAFETY_TEMPLATE
 bool ROBOT_SAFETY_TYPE::isFungoPressed() {
     return anomalies.fungo_pressed.load(std::memory_order_relaxed);
+}
+
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
+    checkState(state);
+    checkCommands(commands);
+    // check which anomaly is active and handle it accordingly, using the corresponding recovery mode. The anomaly are checked based on their severity.
+    // cases that trigger emergency stop
+    if (isEmergencyStopActive() || isFungoPressed()) {
+        recovery_estop.run(state,commands);
+    }
+    else if (anomalies.references_not_received.load(std::memory_order_relaxed)) {
+        // Handle the case where references are not received
+        recovery_damping.run(state,commands);
+    }
+    else if(anomalies.breaking_mechanics){
+        recovery_damping.run(state,commands);
+    }
+    return false; // No anomaly detected
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::setReferencesNotReceived(bool not_received) {
+    anomalies.references_not_received.store(not_received, std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl

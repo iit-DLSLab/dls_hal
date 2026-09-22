@@ -1,6 +1,7 @@
 #ifndef ROBOTS_INVARIANTS_HPP
 #define ROBOTS_INVARIANTS_HPP
 
+#include "recovery_modes.hpp"
 #include "vector"
 #include "stdint.h"
 #include "yaml-cpp/yaml.h"
@@ -8,6 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
+#include <optional>
 
 class IMU{
 public:
@@ -117,7 +120,6 @@ public:
     
     void init(const YAML::Node& config);
     
-    virtual void eSTOP(TCommands& commands);
     virtual void checkState(const TState& state);
 
     virtual void checkCommands(TCommands& commands);
@@ -131,12 +133,14 @@ public:
 
     void triggerEmergencyStop();
 
+    void setReferencesNotReceived(bool not_received);
+
     bool isEmergencyStopActive();
 
     // Robot anomalies
     class RobotAnomalies{
     public:
-        std::vector<bool> joint_pos_limit_violation;
+        std::vector<bool> joint_pos_limit_violation; //std::map<RECOVERY_MODE, bool>
         std::vector<bool> joint_vel_limit_violation;
         std::vector<bool> joint_torque_limit_violation;
         std::vector<bool> joint_current_limit_violation;
@@ -156,19 +160,35 @@ public:
         std::vector<bool> motor_overheat_detected;
         std::vector<bool> motor_under_temperature_detected;
         std::vector<bool> battery_charge_low;
+
+        // One-way latch written by the command thread and read by the real-time
+        // control thread; no blocking lock is needed.
+        std::atomic_bool emergency_stop_triggered;
         // Per-cycle status flag written by the control thread and read by the
         // event thread; it does not publish any accompanying state.
-        std::atomic_bool fungo_pressed{false};
+        std::atomic_bool fungo_pressed;
+        std::atomic_bool references_not_received;
+        bool breaking_mechanics{false};
     } anomalies;
 
     TLimits limits;
 
+    bool manageAnomalies(const TState& state, TCommands& commands);
+
     private:
-        // One-way latch written by the command thread and read by the real-time
-        // control thread; no blocking lock is needed.
-        std::atomic_bool e_stop_triggered{false};
         void setFungoPressed(bool pressed);
+        void checkBreakingMechanics(size_t joint_index, double torque);
         void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf);
+
+        // Anomaly auxiliary variables for anomaly detection
+        // breaking_mechanics aux variables
+        double mechanical_stress_max_time;
+        double mechanical_stress_max_torque;
+        std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
+
+        // Recovery procedures
+        RecoveryESTOP recovery_estop;
+        RecoveryDamping recovery_damping;
 };
 
 enum class CONTROL_MODE{
