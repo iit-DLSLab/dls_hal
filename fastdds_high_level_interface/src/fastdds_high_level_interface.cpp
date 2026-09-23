@@ -2,12 +2,21 @@
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
 #include <cstdint>
+#include <iostream>
 
 FastDDSHLInterface::FastDDSHLInterface(const std::string& ID)
     : event_checker_(ID)
 {}
 
-FastDDSHLInterface::~FastDDSHLInterface(){};
+FastDDSHLInterface::~FastDDSHLInterface(){
+    {
+        std::lock_guard<std::mutex> lock(event_thread_control_mutex_);
+        event_thread_running_ = false;
+    }
+    event_thread_control_cv_.notify_all(); // awake eventLoggingLoop() without waiting for the next period
+    if (event_thread_.joinable())
+        event_thread_.join();
+};
 
 void FastDDSHLInterface::setEventLogger(dls::logging::AppLogger& logger)
 {
@@ -50,8 +59,20 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     output_blind_state->msg.motors_current().resize(source.state.motors_current.size(), 0.0);
     output_blind_state->msg.motors_status_word().resize(source.state.motors_status_word.size(), 0);
     output_hal_commands_feedback->msg = input_control_signal->msg;
+
+    // Event checking/logging runs in its own thread, decoupled from the HAL's
+    // real-time frequency, since AppLogger can block on DDS/file I/O.
+    // robot_interface.events_frequency is validated and defaulted by
+    // RobotSafety::init(), which has already run by this point.
+    const double events_frequency = source.safety.getEventsFrequency();
+    event_check_period_ = std::chrono::duration<double>(1.0 / events_frequency);
+
+    if (!event_thread_.joinable()) {
+        event_thread_running_ = true;
+        event_thread_ = std::thread(&FastDDSHLInterface::eventLoggingLoop, this);
+    }
 }
-    
+
 bool FastDDSHLInterface::check(){
     return transport.areInputsReceivingData() && transport.areOutputsUnique();
 }
@@ -108,7 +129,31 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
 }
 
 void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
-    checkEvents(source);
+    // Called at the HAL's real-time frequency: keep this to a bounded, non-
+    // blocking snapshot copy. The actual (potentially blocking) event
+    // checking/logging happens on event_thread_, at its own lower frequency.
+    std::lock_guard<std::mutex> lock(event_snapshot_mutex_);
+    event_snapshot_ = source;
+    event_snapshot_valid_ = true;
+}
+
+void FastDDSHLInterface::eventLoggingLoop(){
+    GenericRobotInterface snapshot;
+    std::unique_lock<std::mutex> control_lock(event_thread_control_mutex_);
+    while (!event_thread_control_cv_.wait_for(
+        control_lock, event_check_period_, [this] { return !event_thread_running_; })) {
+        control_lock.unlock();
+        bool has_snapshot = false;
+        {
+            std::lock_guard<std::mutex> lock(event_snapshot_mutex_);
+            has_snapshot = event_snapshot_valid_;
+            if (has_snapshot)
+                snapshot = event_snapshot_;
+        }
+        if (has_snapshot)
+            checkEvents(snapshot);
+        control_lock.lock();
+    }
 }
 
 void FastDDSHLInterface::writeIMU(const GenericRobotInterface& source){

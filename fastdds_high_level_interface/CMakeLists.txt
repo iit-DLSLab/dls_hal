@@ -12,6 +12,8 @@ if (NOT TARGET transport_interfaces::fastdds_transport)
     find_package(fastdds_transport REQUIRED)
 endif()
 
+find_package(Threads REQUIRED)
+
 target_link_libraries(fastdds_high_level_interface
 PUBLIC
     transport_interfaces::transport_interface
@@ -21,6 +23,8 @@ PUBLIC
     # dls_logging is installed by dls2 but is not part of a CMake export set.
     # Propagate it only within the build tree, not to installed consumers.
     $<BUILD_INTERFACE:dls_logging>
+PRIVATE
+    Threads::Threads
 )
 
 target_include_directories(fastdds_high_level_interface

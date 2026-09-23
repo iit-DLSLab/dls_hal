@@ -25,6 +25,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     references_timeout = references_timeout_node ? references_timeout_node.as<double>() : 1.0;
     if (!std::isfinite(references_timeout) || references_timeout <= 0.0)
         throw std::invalid_argument("robot_interface.references_timeout must be finite and positive (seconds)");
+    const auto events_frequency_node = config["robot_interface"]["events_frequency"];
+    events_frequency = events_frequency_node ? events_frequency_node.as<double>() : 10.0;
+    if (!std::isfinite(events_frequency) || events_frequency <= 0.0)
+        throw std::invalid_argument("robot_interface.events_frequency must be finite and strictly positive (Hz)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
@@ -224,6 +228,11 @@ bool ROBOT_SAFETY_TYPE::isFungoPressed() const {
 ROBOT_SAFETY_TEMPLATE
 double ROBOT_SAFETY_TYPE::getReferencesTimeout() const {
     return references_timeout;
+}
+
+ROBOT_SAFETY_TEMPLATE
+double ROBOT_SAFETY_TYPE::getEventsFrequency() const {
+    return events_frequency;
 }
 
 ROBOT_SAFETY_TEMPLATE

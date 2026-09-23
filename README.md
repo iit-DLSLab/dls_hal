@@ -204,7 +204,7 @@ For the example configuration, provided position is outside its limits:
 | 120 Nm | 0.60 s |
 | 160 Nm | 0.27 s |
 
-`FastDDSHLInterface::write()` invokes its `FastDDSEventChecker`, which publishes one `BREAKING_MECHANICS` error containing **all joints that have triggered**, with each joint's first triggering torque in Nm. Samples are stored in `anomalies.mechanical_stress_trigger_torque`, indexed by joint. Additional joints can be recorded after recovery begins; existing samples are preserved. Names come from `state.names`, with `joint[index]` as a fallback.
+`FastDDSHLInterface::writeEvents()` captures a snapshot of the anomalies each control cycle; a dedicated event thread, running at `robot_interface.events_frequency` Hz (independent of the control loop; see below), consumes the latest snapshot and drives `FastDDSEventChecker`, which publishes one `BREAKING_MECHANICS` error containing **all joints that have triggered**, with each joint's first triggering torque in Nm. Samples are stored in `anomalies.mechanical_stress_trigger_torque`, indexed by joint. Additional joints can be recorded after recovery begins; existing samples are preserved. Names come from `state.names`, with `joint[index]` as a fallback.
 
 Returning within limits resets the exposure timer but does **not** clear a latched fault or its recorded torque. Repeated notifications therefore describe recorded triggers, not necessarily current torque or currently out-of-limit joints. `RobotSafety::init()` clears the latch, samples, and timers. Notification throttling follows the configured `AppLogger` behavior.
 
@@ -356,6 +356,18 @@ timeout. A required input that has never received a sample is missing immediatel
 Inputs marked optional are excluded from this check. In Pegasus hardware this
 setting belongs in `pegasus_hal/config/high_level_config.yaml`; the simulator reads
 it from the robot's `interface_config.yaml` instead.
+
+Event checking/publishing (see above) runs on its own thread, decoupled from the
+control loop, at a configurable rate, read via `RobotSafety::getEventsFrequency()`
+(the same `robot_interface` config section, and the same source/sink split
+between hardware and simulator, as `references_timeout` above):
+
+```yaml
+robot_interface:
+  events_frequency: 10.0 # Hz; finite and strictly positive
+```
+
+The default is 10 Hz.
 
 The flag is updated before command computation and `manageAnomalies()`, which
 selects damping recovery while references are missing, unless emergency stop

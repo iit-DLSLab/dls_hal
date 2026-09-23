@@ -12,6 +12,31 @@
 #include <chrono>
 #include <optional>
 
+// std::atomic_bool with no copy constructor/assignment operator of its own
+// (copying it is not itself atomic), which forces any enclosing struct to
+// hand-write its own copy operations. This wrapper keeps the relaxed
+// load/store semantics used throughout this file but is copyable: a copy
+// takes an independent, consistent (if possibly stale) snapshot of the
+// flag's value at that instant, which is exactly what's needed to hand a
+// struct like RobotAnomalies off to another thread as a snapshot.
+class RelaxedAtomicBool{
+public:
+    RelaxedAtomicBool() noexcept = default;
+    RelaxedAtomicBool(bool value) noexcept : value_(value) {}
+    RelaxedAtomicBool(const RelaxedAtomicBool& other) noexcept
+        : value_(other.value_.load(std::memory_order_relaxed)) {}
+    RelaxedAtomicBool& operator=(const RelaxedAtomicBool& other) noexcept {
+        value_.store(other.value_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        return *this;
+    }
+
+    bool load(std::memory_order order = std::memory_order_seq_cst) const noexcept { return value_.load(order); }
+    void store(bool desired, std::memory_order order = std::memory_order_seq_cst) noexcept { value_.store(desired, order); }
+
+private:
+    std::atomic_bool value_{false};
+};
+
 class IMU{
 public:
     IMU();
@@ -139,6 +164,8 @@ public:
 
     double getReferencesTimeout() const;
 
+    double getEventsFrequency() const;
+
     // Robot anomalies
     class RobotAnomalies{
     public:
@@ -165,14 +192,14 @@ public:
 
         // One-way latch written by the command thread and read by the real-time
         // control thread; no blocking lock is needed.
-        std::atomic_bool emergency_stop_triggered;
+        RelaxedAtomicBool emergency_stop_triggered;
         // Per-cycle status flag written by the control thread and read by the
         // event thread; it does not publish any accompanying state.
-        std::atomic_bool fungo_pressed;
+        RelaxedAtomicBool fungo_pressed;
         // One-way latch: once references are lost, it stays true forever
         // (reset only by safety.init()), permanently forcing the damping
         // recovery procedure to take over.
-        std::atomic_bool lost_references;
+        RelaxedAtomicBool lost_references;
         bool breaking_mechanics{false};
         // Preserve each joint's first triggering torque while the fault is latched.
         std::vector<std::optional<double>> mechanical_stress_trigger_torque;
@@ -205,6 +232,9 @@ public:
         std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
         // Timeout for detecting missing required high-level input messages.
         double references_timeout; // seconds since the latest required high-level input message
+        // Rate at which the high-level interface's background thread checks
+        // for events to log, decoupled from the control loop's frequency.
+        double events_frequency; // Hz
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;
