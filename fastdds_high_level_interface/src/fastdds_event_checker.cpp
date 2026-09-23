@@ -1,6 +1,8 @@
 #include "dls_hal/fastdds_event_checker.hpp"
 
+#include "dls_hal/generic_robot_interface.hpp"
 #include "dls2/log/app_logger.hpp"
+#include "dls2/log/event_config.hpp"
 
 #include <algorithm>
 #include <cctype>
