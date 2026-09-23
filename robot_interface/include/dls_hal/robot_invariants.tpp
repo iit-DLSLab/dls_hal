@@ -71,11 +71,14 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
+
+    safety_state = SafetyState::NOMINAL;
 }
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     setFungoPressed(false);
+    anomalies.breaking_mechanics = false;
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
@@ -122,7 +125,6 @@ void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque
             anomalies.breaking_mechanics = true;
         }
     } else {
-        // Both conditions must hold continuously for the configured duration.
         stress_start.reset();
     }
 }
@@ -225,33 +227,49 @@ double ROBOT_SAFETY_TYPE::getReferencesTimeout() const {
 }
 
 ROBOT_SAFETY_TEMPLATE
-bool ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
+void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
     checkState(state);
     checkCommands(commands);
-    // check which anomaly is active and handle it accordingly, using the corresponding recovery mode. The anomaly are checked based on their severity.
-    // cases that trigger emergency stop
-    if (isEmergencyStopActive() || isFungoPressed()) {
-        recovery_estop.run(state,commands);
+    // set safety state machine based on the anomalies detected
+    setSafetyState();
+    // execute the corresponding recovery mode based on the safety state machine
+    if(safety_state != SafetyState::NOMINAL){
+        executeRecoveryMode(state, commands);
     }
-    else if (anomalies.lost_references.load(std::memory_order_relaxed)) {
-        // References were lost at least once: this is a one-way latch, so
-        // every subsequent cycle keeps entering the damping recovery.
-        recovery_damping.run(state,commands);
+}
+
+ROBOT_SAFETY_TEMPLATE
+typename ROBOT_SAFETY_TYPE::SafetyState ROBOT_SAFETY_TYPE::getSafetyState() const {
+    return safety_state;
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::setSafetyState() {
+    if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
+        anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
+        safety_state = SafetyState::EMERGENCY_STOP;
+    } else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
+        safety_state = SafetyState::DAMPING_RECOVERY;
     }
-    else if(anomalies.breaking_mechanics){
-        recovery_damping.run(state,commands);
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& commands) {
+    switch (safety_state) {
+        case SafetyState::EMERGENCY_STOP:
+            recovery_estop.execute(state, commands);
+            break;
+        case SafetyState::DAMPING_RECOVERY:
+            recovery_damping.execute(state, commands);
+            break;
+        default:
+            break;
     }
-    return false; // No anomaly detected
 }
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
-    // Latch: once references are lost, the anomaly stays active even if
-    // fresh messages resume, until it is reset (e.g. by safety.init()).
-    // From this point on the damping recovery procedure takes over and
-    // cannot be undone.
-    if (lost)
-        anomalies.lost_references.store(true, std::memory_order_relaxed);
+    anomalies.lost_references.store(lost, std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl

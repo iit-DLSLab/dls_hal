@@ -178,14 +178,24 @@ public:
         std::vector<std::optional<double>> mechanical_stress_trigger_torque;
     } anomalies;
 
+    enum class SafetyState{
+        NOMINAL=0,
+        EMERGENCY_STOP,
+        DAMPING_RECOVERY
+    } safety_state;
+
+    SafetyState getSafetyState() const;
+
     TLimits limits;
 
-    bool manageAnomalies(const TState& state, TCommands& commands);
+    void manageAnomalies(const TState& state, TCommands& commands);
 
     private:
         void setFungoPressed(bool pressed);
         void checkBreakingMechanics(size_t joint_index, double torque);
         void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf);
+        void setSafetyState();
+        void executeRecoveryMode(const TState& state, TCommands& commands);
 
         // Anomaly auxiliary variables for anomaly detection
         // breaking_mechanics aux variables

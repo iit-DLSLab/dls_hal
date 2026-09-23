@@ -48,9 +48,12 @@ bool Hal<LLI, RI, HLI>::run()
     hli.read(ri);
 
     ri.computeCommands();
-    ri.checkCommands();
+
+    ri.manageAnomalies();
 
     lli.write(ri);
+
+    hli.writeEvents(ri);
 
     return true;
 }

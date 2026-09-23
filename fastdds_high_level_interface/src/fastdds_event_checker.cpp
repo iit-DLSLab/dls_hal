@@ -1,5 +1,4 @@
 #include "dls_hal/fastdds_event_checker.hpp"
-#include "dls_hal/generic_robot_interface.hpp"
 
 #include "dls2/log/app_logger.hpp"
 
@@ -92,8 +91,8 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkJointLimitEvents(ri);
     checkInvalidValueEvents(ri);
     checkBatteryEvents(ri);
-    checkEmergencyStopEvents(ri);
-    checkRecoveryEvents(ri);
+    checkEmergencyAndRecoveryEvents(ri);
+    checkSafetyStateEvents(ri);
 }
 
 void FastDDSEventChecker::checkJointLimitEvents(const GenericRobotInterface& ri)
@@ -162,21 +161,19 @@ void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)
                   << battery.charge_percentage * 100.0 << "%, minimum="
                   << limits->percentage_battery_charge_min * 100.0 << "%";
     }
-    if (low) event_logger_->warning("Low battery charge: " + batteries.str(), EventID::BATTERY_CHARGE_LOW);
+    if (low) event_logger_->error("Low battery charge: " + batteries.str(), EventID::BATTERY_CHARGE_LOW);
 }
 
-void FastDDSEventChecker::checkEmergencyStopEvents(const GenericRobotInterface& ri)
+void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInterface& ri)
 {
     if (ri.safety.isFungoPressed())
         event_logger_->error("Fungo button is pressed", EventID::FUNGO_PRESSED);
     if (ri.safety.isEmergencyStopActive())
-        event_logger_->warning("Emergency stop triggered.", EventID::EMERGENCY_STOP_PRESSED);
-}
+        event_logger_->error("Emergency stop triggered.", EventID::EMERGENCY_STOP_PRESSED);
 
-void FastDDSEventChecker::checkRecoveryEvents(const GenericRobotInterface& ri)
-{
     const auto& anomalies = ri.safety.anomalies;
     if (anomalies.breaking_mechanics) {
+        std::cout << "Breaking mechanics detected: sustained excessive torque while outside joint position limits." << std::endl;
         std::ostringstream message;
         message << "Mechanical stress: sustained excessive torque while outside joint position limits.";
         for (size_t i = 0; i < anomalies.mechanical_stress_trigger_torque.size(); ++i) {
@@ -188,7 +185,28 @@ void FastDDSEventChecker::checkRecoveryEvents(const GenericRobotInterface& ri)
         event_logger_->error(message.str(), EventID::BREAKING_MECHANICS);
     }
     if (anomalies.lost_references.load(std::memory_order_relaxed))
-        event_logger_->error("Control reference inputs were lost: the damping recovery "
-                              "procedure is taking over and this cannot be undone.",
+        event_logger_->error("Control reference inputs were lost",
                               EventID::MISSING_INPUT);
+}
+
+void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri)
+{
+    using SafetyState = decltype(ri.safety)::SafetyState;
+    const auto safety_state = ri.safety.getSafetyState();
+    // Only publish while the robot is not in its nominal safety state.
+    if (safety_state == SafetyState::NOMINAL) return;
+
+    const char* state_name = "UNKNOWN";
+    switch (safety_state) {
+        case SafetyState::EMERGENCY_STOP:
+            state_name = "EMERGENCY_STOP";
+            break;
+        case SafetyState::DAMPING_RECOVERY:
+            state_name = "DAMPING_RECOVERY";
+            break;
+        default:
+            break;
+    }
+    event_logger_->error(std::string("Safety state is not nominal: ") + state_name + " mode is active.",
+                           EventID::SAFETY_STATE_NOT_NOMINAL);
 }

@@ -20,8 +20,8 @@ private:
     void checkJointLimitEvents(const GenericRobotInterface& source);
     void checkInvalidValueEvents(const GenericRobotInterface& source);
     void checkBatteryEvents(const GenericRobotInterface& source);
-    void checkEmergencyStopEvents(const GenericRobotInterface& source);
-    void checkRecoveryEvents(const GenericRobotInterface& source);
+    void checkEmergencyAndRecoveryEvents(const GenericRobotInterface& source);
+    void checkSafetyStateEvents(const GenericRobotInterface& source);
 
     std::shared_ptr<dls::logging::AppLogger> event_logger_;
 };

@@ -19,6 +19,7 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         void read(GenericRobotInterface& source) override;
         void write(const GenericRobotInterface& source) override;
+        void writeEvents(const GenericRobotInterface& source) override;
 
         void writeIMU(const GenericRobotInterface& source);
 
