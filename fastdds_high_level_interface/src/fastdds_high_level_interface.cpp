@@ -129,11 +129,15 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
 }
 
 void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
-    // Called at the HAL's real-time frequency: keep this to a bounded, non-
-    // blocking snapshot copy. The actual (potentially blocking) event
-    // checking/logging happens on event_thread_, at its own lower frequency.
+    // Called at the HAL's real-time frequency: bail out immediately if this
+    // cycle is clean, so both the check and the (rare) locked update stay
+    // cheap. The actual (potentially blocking) event checking/logging
+    // happens on event_thread_, at its own lower frequency.
+    if (!source.safety.anomalies.any())
+        return;
     std::lock_guard<std::mutex> lock(event_snapshot_mutex_);
-    event_snapshot_ = source;
+    accumulated_anomalies_.mergeFrom(source.safety.anomalies);
+    latest_source_ = source;
     event_snapshot_valid_ = true;
 }
 
@@ -147,8 +151,13 @@ void FastDDSHLInterface::eventLoggingLoop(){
         {
             std::lock_guard<std::mutex> lock(event_snapshot_mutex_);
             has_snapshot = event_snapshot_valid_;
-            if (has_snapshot)
-                snapshot = event_snapshot_;
+            if (has_snapshot) {
+                snapshot = latest_source_;
+                snapshot.safety.anomalies = accumulated_anomalies_;
+                // Start a fresh accumulation window.
+                accumulated_anomalies_ = RobotAnomaliesType{};
+                event_snapshot_valid_ = false;
+            }
         }
         if (has_snapshot)
             checkEvents(snapshot);

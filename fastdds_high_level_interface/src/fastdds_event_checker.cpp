@@ -175,11 +175,11 @@ void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInte
 
     const auto& anomalies = ri.safety.anomalies;
     if (anomalies.breaking_mechanics) {
-        std::cout << "Breaking mechanics detected: sustained excessive torque while outside joint position limits." << std::endl;
         std::ostringstream message;
         message << "Mechanical stress: sustained excessive torque while outside joint position limits.";
-        for (size_t i = 0; i < anomalies.mechanical_stress_trigger_torque.size(); ++i) {
-            const auto& torque = anomalies.mechanical_stress_trigger_torque[i];
+        const auto& trigger_torques = ri.safety.getMechanicalStressTriggerTorque();
+        for (size_t i = 0; i < trigger_torques.size(); ++i) {
+            const auto& torque = trigger_torques[i];
             if (!torque) continue;
             message << "\nJoint=" << jointName(ri.state, i)
                     << ", triggering torque=" << *torque << " Nm";

@@ -72,7 +72,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     if (!std::isfinite(mechanical_stress_max_torque) || mechanical_stress_max_torque < 0.0)
         throw std::invalid_argument("Mechanical stress torque threshold must be finite and non-negative");
     anomalies.breaking_mechanics = false;
-    anomalies.mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
+    mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
 
@@ -124,7 +124,7 @@ void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque
             ? mechanical_stress_exp_time_scale
             : mechanical_stress_exp_time_scale * std::exp(-mechanical_stress_exp_decay * excess_torque);
         if (stress_time > allowed_time) {
-            auto& trigger_torque = anomalies.mechanical_stress_trigger_torque[joint_index];
+            auto& trigger_torque = mechanical_stress_trigger_torque[joint_index];
             if (!trigger_torque) trigger_torque = torque;
             anomalies.breaking_mechanics = true;
         }
@@ -233,6 +233,11 @@ double ROBOT_SAFETY_TYPE::getReferencesTimeout() const {
 ROBOT_SAFETY_TEMPLATE
 double ROBOT_SAFETY_TYPE::getEventsFrequency() const {
     return events_frequency;
+}
+
+ROBOT_SAFETY_TEMPLATE
+const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStressTriggerTorque() const {
+    return mechanical_stress_trigger_torque;
 }
 
 ROBOT_SAFETY_TEMPLATE

@@ -166,10 +166,78 @@ public:
 
     double getEventsFrequency() const;
 
+    // Each joint's first triggering torque while breaking_mechanics is
+    // latched (see mechanical_stress_trigger_torque below).
+    const std::vector<std::optional<double>>& getMechanicalStressTriggerTorque() const;
+
     // Robot anomalies
     class RobotAnomalies{
     public:
-        std::vector<bool> joint_pos_limit_violation; //std::map<RECOVERY_MODE, bool>
+        // True if any anomaly flag/latch is currently set.
+        bool any() const {
+            return anyTrue(joint_pos_limit_violation)
+                || anyTrue(joint_vel_limit_violation)
+                || anyTrue(joint_torque_limit_violation)
+                || anyTrue(joint_current_limit_violation)
+                || anyTrue(nan_position_detected)
+                || anyTrue(nan_velocity_detected)
+                || anyTrue(nan_torque_detected)
+                || anyTrue(inf_position_detected)
+                || anyTrue(inf_velocity_detected)
+                || anyTrue(inf_torque_detected)
+                || anyTrue(nan_position_command_detected)
+                || anyTrue(nan_velocity_command_detected)
+                || anyTrue(nan_torque_command_detected)
+                || anyTrue(inf_position_command_detected)
+                || anyTrue(inf_velocity_command_detected)
+                || anyTrue(inf_torque_command_detected)
+                || anyTrue(motor_overheat_detected)
+                || anyTrue(motor_under_temperature_detected)
+                || anyTrue(battery_charge_low)
+                || breaking_mechanics
+                || fungo_pressed.load(std::memory_order_relaxed)
+                || lost_references.load(std::memory_order_relaxed)
+                || emergency_stop_triggered.load(std::memory_order_relaxed);
+        }
+
+        // OR-merges other into *this: a flag true in either is true
+        // afterwards. Lets a caller accumulate anomalies detected across
+        // several cycles without losing ones that clear again before being
+        // read by a lower-frequency consumer (e.g. an event logger).
+        void mergeFrom(const RobotAnomalies& other) {
+            orInto(joint_pos_limit_violation, other.joint_pos_limit_violation);
+            orInto(joint_vel_limit_violation, other.joint_vel_limit_violation);
+            orInto(joint_torque_limit_violation, other.joint_torque_limit_violation);
+            orInto(joint_current_limit_violation, other.joint_current_limit_violation);
+            orInto(nan_position_detected, other.nan_position_detected);
+            orInto(nan_velocity_detected, other.nan_velocity_detected);
+            orInto(nan_torque_detected, other.nan_torque_detected);
+            orInto(inf_position_detected, other.inf_position_detected);
+            orInto(inf_velocity_detected, other.inf_velocity_detected);
+            orInto(inf_torque_detected, other.inf_torque_detected);
+            orInto(nan_position_command_detected, other.nan_position_command_detected);
+            orInto(nan_velocity_command_detected, other.nan_velocity_command_detected);
+            orInto(nan_torque_command_detected, other.nan_torque_command_detected);
+            orInto(inf_position_command_detected, other.inf_position_command_detected);
+            orInto(inf_velocity_command_detected, other.inf_velocity_command_detected);
+            orInto(inf_torque_command_detected, other.inf_torque_command_detected);
+            orInto(motor_overheat_detected, other.motor_overheat_detected);
+            orInto(motor_under_temperature_detected, other.motor_under_temperature_detected);
+            orInto(battery_charge_low, other.battery_charge_low);
+            breaking_mechanics = breaking_mechanics || other.breaking_mechanics;
+            fungo_pressed.store(
+                fungo_pressed.load(std::memory_order_relaxed) || other.fungo_pressed.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            lost_references.store(
+                lost_references.load(std::memory_order_relaxed) || other.lost_references.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            emergency_stop_triggered.store(
+                emergency_stop_triggered.load(std::memory_order_relaxed)
+                    || other.emergency_stop_triggered.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+        }
+
+        std::vector<bool> joint_pos_limit_violation;
         std::vector<bool> joint_vel_limit_violation;
         std::vector<bool> joint_torque_limit_violation;
         std::vector<bool> joint_current_limit_violation;
@@ -201,8 +269,18 @@ public:
         // recovery procedure to take over.
         RelaxedAtomicBool lost_references;
         bool breaking_mechanics{false};
-        // Preserve each joint's first triggering torque while the fault is latched.
-        std::vector<std::optional<double>> mechanical_stress_trigger_torque;
+
+    private:
+        static bool anyTrue(const std::vector<bool>& flags) {
+            return std::any_of(flags.begin(), flags.end(), [](bool flag) { return flag; });
+        }
+        // OR's src into acc element-wise, resizing acc on the first call.
+        static void orInto(std::vector<bool>& acc, const std::vector<bool>& src) {
+            if (acc.size() != src.size())
+                acc.assign(src.size(), false);
+            for (size_t i = 0; i < src.size(); ++i)
+                acc[i] = acc[i] || src[i];
+        }
     } anomalies;
 
     enum class SafetyState{
@@ -230,6 +308,8 @@ public:
         double mechanical_stress_exp_decay;
         double mechanical_stress_max_torque;
         std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
+        // Preserve each joint's first triggering torque while breaking_mechanics is latched.
+        std::vector<std::optional<double>> mechanical_stress_trigger_torque;
         // Timeout for detecting missing required high-level input messages.
         double references_timeout; // seconds since the latest required high-level input message
         // Rate at which the high-level interface's background thread checks

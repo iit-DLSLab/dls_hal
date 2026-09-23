@@ -112,7 +112,7 @@ void mechanicalFaultCapturesTrigger() {
     f.state.torque = {0.0, -12.5, 15.0};
     f.safety.checkState(f.state);
     require(!f.safety.anomalies.breaking_mechanics, "stress latched before the time threshold");
-    const auto& triggers = f.safety.anomalies.mechanical_stress_trigger_torque;
+    const auto& triggers = f.safety.getMechanicalStressTriggerTorque();
     require(triggers == std::vector<std::optional<double>>(3), "trigger recorded before recovery");
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     f.recover();
@@ -148,7 +148,7 @@ void mechanicalFaultRequiresPositionAndTorque() {
     f.state.position[2] = -1.0;
     f.safety.checkState(f.state);
     require(!f.safety.anomalies.breaking_mechanics, "position at the lower limit must not trigger stress");
-    require(f.safety.anomalies.mechanical_stress_trigger_torque ==
+    require(f.safety.getMechanicalStressTriggerTorque() ==
             std::vector<std::optional<double>>(3), "ineligible joint recorded a stress trigger");
 }
 
@@ -179,7 +179,7 @@ void exponentialMechanicalStress() {
     f.safety.checkState(f.state);
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
     f.safety.checkState(f.state);
-    const auto& triggers = f.safety.anomalies.mechanical_stress_trigger_torque;
+    const auto& triggers = f.safety.getMechanicalStressTriggerTorque();
     require(!triggers[0] && triggers[1] == 100.0 && triggers[2] == -100.0,
             "exponential timing must shorten with torque magnitude for both signs");
     // The current torque, rather than the torque at timer start, sets the deadline.

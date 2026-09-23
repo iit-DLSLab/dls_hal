@@ -13,6 +13,11 @@
 #include <mutex>
 #include <thread>
 
+// The type of GenericRobotInterface::safety.anomalies, named here so
+// FastDDSHLInterface can keep an accumulator of just the anomalies (see
+// below) without depending on RobotSafety's template parameters.
+using RobotAnomaliesType = decltype(GenericRobotInterface().safety.anomalies);
+
 class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, FastDDSTransport> {
     public:
         explicit FastDDSHLInterface(const std::string& ID = "FastDDSHLInterface");
@@ -22,9 +27,11 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         void read(GenericRobotInterface& source) override;
         void write(const GenericRobotInterface& source) override;
-        // Cheap: only updates the snapshot consumed by the background event
-        // logging thread. Does not itself check or publish events, so it is
-        // safe to call at the HAL's real-time frequency.
+        // Cheap: if this cycle has no anomaly, returns immediately. Otherwise
+        // OR-merges it into accumulated_anomalies_ and mirrors source into
+        // latest_source_, both consumed by the background event logging
+        // thread. Does not itself check or publish events, so it is safe to
+        // call at the HAL's real-time frequency.
         void writeEvents(const GenericRobotInterface& source) override;
 
         void writeIMU(const GenericRobotInterface& source);
@@ -43,20 +50,28 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         dls::WriterPtr<dls2_interface::msg::ControlSignal> output_hal_commands_feedback;
     private:
         // Runs on event_thread_, decoupled from the HAL's real-time frequency:
-        // wakes on its own period, copies out the latest snapshot and runs
-        // the (potentially blocking, e.g. DDS-publishing) event checks on it.
+        // wakes on its own period; if an anomaly is pending, takes
+        // latest_source_ with accumulated_anomalies_ substituted in, resets
+        // accumulated_anomalies_ for the next window, and runs the
+        // (potentially blocking, e.g. DDS-publishing) event checks on it.
         void eventLoggingLoop();
 
         FastDDSEventChecker event_checker_;
 
-        // Snapshot of the event-relevant robot state, written by writeEvents()
-        // (real-time thread) and read by eventLoggingLoop() (background
-        // thread). All access is guarded by event_snapshot_mutex_.
-        GenericRobotInterface event_snapshot_;
+        // The full robot interface as of the most recent HAL cycle that had
+        // any anomaly, giving eventLoggingLoop() the state/commands/limits it
+        // needs to build event messages from. Anomalies are OR-merged into
+        // accumulated_anomalies_ (see RobotAnomalies::mergeFrom()) across
+        // cycles instead, so a flag only true for a single HAL cycle is not
+        // lost between the event thread's (lower-frequency) wake-ups. Both
+        // are only touched by writeEvents() when the current cycle actually
+        // has an anomaly (RobotAnomalies::any()); a clean cycle leaves them
+        // untouched. Access is guarded by event_snapshot_mutex_.
+        GenericRobotInterface latest_source_;
+        RobotAnomaliesType accumulated_anomalies_;
         mutable std::mutex event_snapshot_mutex_;
-        // False until writeEvents() has populated event_snapshot_ at least
-        // once; guards against eventLoggingLoop() checking a default-
-        // constructed (empty) snapshot before the first HAL cycle runs.
+        // True while there is an accumulated anomaly eventLoggingLoop() has
+        // not yet consumed.
         bool event_snapshot_valid_{false};
 
         // Overridden by robot_interface.events_frequency (source.safety.getEventsFrequency()) in init().
