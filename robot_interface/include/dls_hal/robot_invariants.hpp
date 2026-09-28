@@ -194,6 +194,7 @@ public:
                 || anyTrue(motor_overheat_detected)
                 || anyTrue(motor_under_temperature_detected)
                 || anyTrue(battery_charge_low)
+                || anyTrue(joint_limit_hard_stop)
                 || breaking_mechanics
                 || fungo_pressed.load(std::memory_order_relaxed)
                 || lost_references.load(std::memory_order_relaxed)
@@ -224,6 +225,7 @@ public:
             orInto(motor_overheat_detected, other.motor_overheat_detected);
             orInto(motor_under_temperature_detected, other.motor_under_temperature_detected);
             orInto(battery_charge_low, other.battery_charge_low);
+            orInto(joint_limit_hard_stop, other.joint_limit_hard_stop);
             breaking_mechanics = breaking_mechanics || other.breaking_mechanics;
             fungo_pressed.store(
                 fungo_pressed.load(std::memory_order_relaxed) || other.fungo_pressed.load(std::memory_order_relaxed),
@@ -257,6 +259,7 @@ public:
         std::vector<bool> motor_overheat_detected;
         std::vector<bool> motor_under_temperature_detected;
         std::vector<bool> battery_charge_low;
+        std::vector<bool> joint_limit_hard_stop;
 
         // One-way latch written by the command thread and read by the real-time
         // control thread; no blocking lock is needed.
@@ -286,7 +289,8 @@ public:
     enum class SafetyState{
         NOMINAL=0,
         EMERGENCY_STOP,
-        DAMPING_RECOVERY
+        DAMPING_RECOVERY,
+        JOINT_LIMIT_HARD_STOP
     } safety_state;
 
     SafetyState getSafetyState() const;
@@ -319,6 +323,7 @@ public:
         // Recovery procedures
         RecoveryESTOP recovery_estop;
         RecoveryDamping recovery_damping;
+        RecoveryJointLimitHardStop recovery_joint_limit_hard_stop;
 };
 
 enum class CONTROL_MODE{

@@ -49,6 +49,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_under_temperature_detected.resize(n_joint, false);
     anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
+    anomalies.joint_limit_hard_stop.assign(n_joint, false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
     mechanical_stress_start_per_joint.assign(n_joint, std::nullopt);
     auto mechanical_stress_max_torque_node = config["robot_interface"]["safety"]["mechanical_stress_max_torque"];
@@ -75,6 +76,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
+    recovery_joint_limit_hard_stop.init(config, limits.position_min, limits.position_max);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -101,6 +103,8 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
             setFungoPressed(true);
         }
         checkBreakingMechanics(i, state.torque[i]);
+        anomalies.joint_limit_hard_stop[i] =
+            recovery_joint_limit_hard_stop.isBrakingRequired(i, state.position[i], state.velocity[i]);
     }
     for (size_t i = 0; i < state.battery.size(); ++i) {
         anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
@@ -264,6 +268,12 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
         safety_state = SafetyState::EMERGENCY_STOP;
     } else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::DAMPING_RECOVERY;
+    } else if (safety_state == SafetyState::NOMINAL || safety_state == SafetyState::JOINT_LIMIT_HARD_STOP) {
+        // Lowest priority, and never overrides a latched recovery.
+        const bool braking = std::any_of(anomalies.joint_limit_hard_stop.begin(),
+                                         anomalies.joint_limit_hard_stop.end(),
+                                         [](bool flag) { return flag; });
+        safety_state = braking ? SafetyState::JOINT_LIMIT_HARD_STOP : SafetyState::NOMINAL;
     }
 }
 
@@ -275,6 +285,9 @@ void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& comm
             break;
         case SafetyState::DAMPING_RECOVERY:
             recovery_damping.execute(state, commands);
+            break;
+        case SafetyState::JOINT_LIMIT_HARD_STOP:
+            recovery_joint_limit_hard_stop.execute(state, commands);
             break;
         default:
             break;

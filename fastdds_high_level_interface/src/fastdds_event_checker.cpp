@@ -194,7 +194,14 @@ void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInte
 void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri)
 {
     using SafetyState = decltype(ri.safety)::SafetyState;
-    const auto safety_state = ri.safety.getSafetyState();
+    auto safety_state = ri.safety.getSafetyState();
+    // The hard stop is not latched: rely on the accumulated flags so braking
+    // that ended between two event checks is still reported.
+    const auto& hard_stop = ri.safety.anomalies.joint_limit_hard_stop;
+    const bool hard_stop_seen = std::any_of(hard_stop.begin(), hard_stop.end(),
+                                            [](bool flag) { return flag; });
+    if (safety_state == SafetyState::NOMINAL && hard_stop_seen)
+        safety_state = SafetyState::JOINT_LIMIT_HARD_STOP;
     // Only publish while the robot is not in its nominal safety state.
     if (safety_state == SafetyState::NOMINAL) return;
 
@@ -206,9 +213,21 @@ void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri
         case SafetyState::DAMPING_RECOVERY:
             state_name = "DAMPING_RECOVERY";
             break;
+        case SafetyState::JOINT_LIMIT_HARD_STOP:
+            state_name = "JOINT_LIMIT_HARD_STOP";
+            break;
         default:
             break;
     }
-    event_logger_->error(std::string("Safety state is not nominal: ") + state_name + " mode is active.",
-                           EventID::SAFETY_STATE_NOT_NOMINAL);
+    std::string message = std::string("Safety state is not nominal: ") + state_name + " mode is active.";
+    if (hard_stop_seen) {
+        message += collectJointDetails(ri.state, hard_stop,
+            [&](std::ostream& out, size_t i) {
+                out << "position=" << ri.state.position.at(i) << " rad, velocity="
+                    << ri.state.velocity.at(i) << " rad/s, allowed=["
+                    << ri.safety.limits.position_min.at(i) << ", "
+                    << ri.safety.limits.position_max.at(i) << "] rad";
+            });
+    }
+    event_logger_->error(message, EventID::SAFETY_STATE_NOT_NOMINAL);
 }

@@ -153,10 +153,11 @@ The base type does not encode physical units, coordinate frames, timestamps, or 
 | `inf_position_detected`, `inf_velocity_detected`, `inf_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
 | `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
 | `battery_charge_low` | One boolean | `battery_status` is below `percentage_battery_charge_min` |
+| `joint_limit_hard_stop` | One boolean per joint | Joint cannot stop before its position limit at the configured braking acceleration |
 
 State-limit flags are refreshed by `checkState()`. Mechanical stress is an exception: `breaking_mechanics` and the triggering torques remain latched until safety initialization clears them. All per-joint state, limit, and anomaly vectors must have the configured `n_joints` length.
 
-`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop and the fungo button take priority. Missing references and mechanical stress select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
+`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop and the fungo button take priority. Missing references and mechanical stress select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity. Otherwise, the optional joint-limit hard stop brakes the joints that are about to hit a position limit.
 
 #### Mechanical stress: exponential exposure limit
 
@@ -248,6 +249,54 @@ def plot_mechanical_stress_curve(a=2.0, b=0.02, threshold=60.0,
 
 plot_mechanical_stress_curve()
 ```
+
+#### Joint-limit hard stop
+
+`RecoveryJointLimitHardStop` brakes a joint before it reaches `position_min` or `position_max`. A joint moving at speed `|v|` toward a limit, braking at constant deceleration `a` after a reaction delay `t_r`, travels
+
+```text
+delta_q = |v| * t_r + v^2 / (2 * a)
+```
+
+before stopping. Braking is required when `delta_q` reaches the distance left to the limit, reduced by `position_margin`. The same condition is expressed as a safe velocity envelope, where `d` is the remaining distance:
+
+```text
+v_safe(d) = -a * t_r + sqrt((a * t_r)^2 + 2 * a * d)
+```
+
+`checkState()` sets `anomalies.joint_limit_hard_stop[i]` when `|v| > v_safe(d)`, or when the joint is already at or past the limit and still moving toward it. Motion away from a limit is never braked, so a joint can always return inside. The `JOINT_LIMIT_HARD_STOP` safety state has the lowest priority and is not latched. It only overrides the braking joints, and it returns to `NOMINAL` once no joint needs braking. Emergency stop and damping recovery take precedence.
+
+The braking command goes through the field the configured control mode sends to the hardware:
+
+| `low_level_control.mode` | Braking command for a flagged joint |
+| --- | --- |
+| Torque or impedance | `torque = -braking_gain * (v - v_target)`, with `v_target = sign(v) * v_safe(d)` |
+| Velocity | `velocity = v_target` |
+| Position | `position` = the approached limit reduced by the margin. The drive's position loop sets the actual deceleration. |
+| Current | Not supported; initialization throws |
+
+The recovery torque is applied after `checkCommands()`, so it is not clamped to `torque_min`/`torque_max`.
+
+```yaml
+robot_interface:
+  safety:
+    joint_limit_hard_stop:
+      enabled: true
+      braking_acceleration: 50.0   # rad/s^2, scalar or one value per joint
+      reaction_time: 0.004         # s, control and drive latency
+      position_margin: 0.02        # rad, stop this far inside the limit
+      braking_gain: 20.0           # Nm·s/rad, torque and impedance control only
+```
+
+| Parameter | Meaning | Constraint |
+| --- | --- | --- |
+| `enabled` | Enables the hard stop | Defaults to `false` when omitted |
+| `braking_acceleration` | Deceleration assumed to be achievable at every joint | Required; finite, positive |
+| `reaction_time` | Delay before braking takes effect | Finite, non-negative; defaults to 0 s |
+| `position_margin` | Distance kept from each position limit | Finite, non-negative; defaults to 0 rad |
+| `braking_gain` | Gain on the velocity excess above the envelope | Required in torque and impedance control; finite, positive |
+
+Choose `braking_acceleration` below what the actuator can deliver against gravity and load. If it is set too high, braking starts too late. When the hard stop acts, the `SAFETY_STATE_NOT_NOMINAL` event lists the braking joints with their latest position and velocity.
 
 #### `RobotRef`: desired behavior
 
