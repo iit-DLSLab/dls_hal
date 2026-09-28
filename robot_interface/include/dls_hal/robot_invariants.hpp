@@ -233,7 +233,7 @@ public:
     private:
         void setFungoPressed(bool pressed);
         void checkBreakingMechanics(size_t joint_index, double torque);
-        void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf);
+        void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf, std::vector<bool>& anomaly_limit_min, std::vector<bool>& anomaly_limit_max, std::vector<double>& trigger_value);
         void setSafetyState();
         void executeRecoveryMode(const TState& state, TCommands& commands);
 

@@ -40,6 +40,12 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.inf_position_detected.resize(n_joint, false);
     anomalies.inf_velocity_detected.resize(n_joint, false);
     anomalies.inf_torque_detected.resize(n_joint, false);
+    anomalies.joint_pos_clamping_anomaly.assign(n_joint, false);
+    anomalies.joint_vel_clamping_anomaly.assign(n_joint, false);
+    anomalies.joint_torque_clamping_anomaly.assign(n_joint, false);
+    anomalies.joint_pos_command_trigger_value.assign(n_joint, 0.0);
+    anomalies.joint_vel_command_trigger_value.assign(n_joint, 0.0);
+    anomalies.joint_torque_command_trigger_value.assign(n_joint, 0.0);
     anomalies.nan_position_command_detected.assign(n_joint, false);
     anomalies.nan_velocity_command_detected.assign(n_joint, false);
     anomalies.nan_torque_command_detected.assign(n_joint, false);
@@ -157,10 +163,14 @@ bool ROBOT_SAFETY_TYPE::checkJointStateNanInf(double value) {
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf) {
+void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf, std::vector<bool>& anomaly_limit_min, std::vector<bool>& anomaly_limit_max, std::vector<double>& trigger_value) {
     bool is_valid = true;
     for (size_t i = 0; i < command.size(); ++i) {
-        
+        // init anomalies to false
+        anomaly_nan[i] = false;
+        anomaly_inf[i] = false;
+        anomaly_limit_min[i] = false;
+        anomaly_limit_max[i] = false;
         if (std::isnan(command[i])) {
             anomaly_nan[i] = true;
             is_valid = false;
@@ -169,7 +179,16 @@ void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<
             anomaly_inf[i] = true;
             is_valid = false;
         }
-        else if (command[i] < min_limit[i] || command[i] > max_limit[i]) {
+        else if (command[i] < min_limit[i]) {
+            anomaly_limit_min[i] = true;
+            // Record the pre-clamp command that triggered this: it, not the
+            // post-clamp value, is what the caller actually asked for.
+            trigger_value[i] = command[i];
+            command[i] = std::clamp(command[i], min_limit[i], max_limit[i]);
+        }
+        else if (command[i] > max_limit[i]) {
+            anomaly_limit_max[i] = true;
+            trigger_value[i] = command[i];
             command[i] = std::clamp(command[i], min_limit[i], max_limit[i]);
         }
     }
@@ -180,9 +199,9 @@ void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::checkCommands(TCommands& commands) {
-    checkCommand(commands.position, limits.position_min, limits.position_max, anomalies.nan_position_command_detected, anomalies.inf_position_command_detected);
-    checkCommand(commands.velocity, limits.velocity_min, limits.velocity_max, anomalies.nan_velocity_command_detected, anomalies.inf_velocity_command_detected);
-    checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected);
+    checkCommand(commands.position, limits.position_min, limits.position_max, anomalies.nan_position_command_detected, anomalies.inf_position_command_detected, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_command_trigger_value);
+    checkCommand(commands.velocity, limits.velocity_min, limits.velocity_max, anomalies.nan_velocity_command_detected, anomalies.inf_velocity_command_detected, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_command_trigger_value);
+    checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_command_trigger_value);
 }
 
 
