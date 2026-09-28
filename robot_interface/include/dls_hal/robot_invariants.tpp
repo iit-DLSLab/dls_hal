@@ -282,7 +282,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
         anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::EMERGENCY_STOP;
     } else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
-        safety_state = SafetyState::DAMPING_RECOVERY;
+        safety_state = SafetyState::DAMPING;
     }
 }
 
@@ -292,7 +292,7 @@ void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& comm
         case SafetyState::EMERGENCY_STOP:
             recovery_estop.execute(state, commands);
             break;
-        case SafetyState::DAMPING_RECOVERY:
+        case SafetyState::DAMPING:
             recovery_damping.execute(state, commands);
             break;
         default:

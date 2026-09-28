@@ -221,7 +221,7 @@ public:
     enum class SafetyState{
         NOMINAL=0,
         EMERGENCY_STOP,
-        DAMPING_RECOVERY
+        DAMPING
     } safety_state;
 
     SafetyState getSafetyState() const;
