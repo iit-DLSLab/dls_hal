@@ -19,5 +19,3 @@ hal_install_target(robot_interface)
 install(DIRECTORY config
     DESTINATION ${CMAKE_INSTALL_PREFIX}/share/dls_hal
 )
-
-add_subdirectory(test)
