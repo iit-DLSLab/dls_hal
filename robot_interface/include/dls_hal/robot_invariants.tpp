@@ -273,7 +273,17 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
         const bool braking = std::any_of(anomalies.joint_limit_hard_stop.begin(),
                                          anomalies.joint_limit_hard_stop.end(),
                                          [](bool flag) { return flag; });
-        safety_state = braking ? SafetyState::JOINT_LIMIT_HARD_STOP : SafetyState::NOMINAL;
+        
+        if(safety_state == SafetyState::NOMINAL && braking)
+        {
+            safety_state = SafetyState::JOINT_LIMIT_HARD_STOP;
+            return;
+        }
+        if(safety_state == SafetyState::JOINT_LIMIT_HARD_STOP && !braking)
+        {
+             safety_state = SafetyState::DAMPING_RECOVERY;
+             return;
+        }
     }
 }
 

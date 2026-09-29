@@ -130,9 +130,11 @@ double RecoveryJointLimitHardStop::approachedLimit(std::size_t joint, double vel
 double RecoveryJointLimitHardStop::safeVelocity(std::size_t joint, double distance) const {
     // Largest speed that still stops within distance: solves
     // distance = v * reaction_time + v^2 / (2 * a) for v >= 0.
+    // At or past the limit no speed toward it is safe.
+    if (distance <= 0.0) return 0.0;
     const double a = braking_acceleration_[joint];
     const double reaction = a * reaction_time_;
-    return -reaction + std::sqrt(reaction * reaction + 2.0 * a * std::max(distance, 0.0));
+    return -reaction + std::sqrt(reaction * reaction + 2.0 * a * distance);
 }
 
 double RecoveryJointLimitHardStop::remainingDistance(std::size_t joint, double position, double velocity) const {
@@ -143,12 +145,12 @@ double RecoveryJointLimitHardStop::remainingDistance(std::size_t joint, double p
 
 bool RecoveryJointLimitHardStop::isBrakingRequired(std::size_t joint, double position, double velocity) const {
     if (!enabled_ || joint >= position_max_.size() ||
-        !std::isfinite(position) || !std::isfinite(velocity) || velocity == 0.0) {
+        !std::isfinite(position) || !std::isfinite(velocity)) {
         return false;
     }
-    // Only motion toward the limit is braked, so a joint can always move back inside.
-    const double distance = remainingDistance(joint, position, velocity);
-    return distance < 0.0 || std::abs(velocity) > safeVelocity(joint, distance);
+    // Only motion toward the limit is braked, so a joint can always move back
+    // inside. The safe velocity is never negative, so a joint at rest is not braked.
+    return std::abs(velocity) > safeVelocity(joint, remainingDistance(joint, position, velocity));
 }
 
 void RecoveryJointLimitHardStop::execute(const RobotState& state, RobotCommands& commands) {
