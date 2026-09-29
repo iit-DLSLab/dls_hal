@@ -49,6 +49,25 @@ void logJointLimit(dls::logging::AppLogger& logger, const RobotState& state,
     if (!message.empty()) logger.warning(message, id);
 }
 
+// Commands outside their limits are clamped in place before being sent to
+// hardware, so by the time this cycle's snapshot is taken the live command
+// already holds the clamped (safe) value; trigger_values instead carries the
+// pre-clamp value that actually caused the clamp (see
+// RobotAnomalies::joint_*_command_trigger_value).
+template <typename LowerLimit>
+void logClampingAnomaly(dls::logging::AppLogger& logger, const RobotState& state,
+                        const std::vector<bool>& flags, const std::vector<double>& trigger_values,
+                        const char* quantity, const char* unit, const LowerLimit& lower,
+                        const std::vector<double>& upper, EventID id)
+{
+    const auto message = collectJointDetails(state, flags, [&](std::ostream& out, size_t i) {
+        out << "clamping anomaly on " << quantity << " command, triggering value="
+            << trigger_values.at(i) << " " << unit
+            << ", allowed=[" << lower(i) << ", " << upper.at(i) << "] " << unit;
+    });
+    if (!message.empty()) logger.warning(message, id);
+}
+
 // State and command anomalies share IDs; collect both before notifying.
 template <typename Values>
 std::string collectInvalidJointValues(const RobotState& state, const Values& values,
@@ -112,6 +131,15 @@ void FastDDSEventChecker::checkJointLimitEvents(const GenericRobotInterface& ri)
     logJointLimit(*event_logger_, *state, anomalies->joint_torque_limit_violation,
                   state->torque, "torque", "Nm", [&](size_t i) { return limits->torque_min.at(i); },
                   limits->torque_max, EventID::JOINT_TORQUE_OUT_OF_BOUND);
+    logClampingAnomaly(*event_logger_, *state, anomalies->joint_pos_clamping_anomaly,
+                  anomalies->joint_pos_command_trigger_value, "position", "rad", [&](size_t i) { return limits->position_min.at(i); },
+                  limits->position_max, EventID::JOINT_POS_CLAMPING_ANOMALY);
+    logClampingAnomaly(*event_logger_, *state, anomalies->joint_vel_clamping_anomaly,
+                  anomalies->joint_vel_command_trigger_value, "velocity", "rad/s", [&](size_t i) { return limits->velocity_min.at(i); },
+                  limits->velocity_max, EventID::JOINT_VEL_CLAMPING_ANOMALY);
+    logClampingAnomaly(*event_logger_, *state, anomalies->joint_torque_clamping_anomaly,
+                  anomalies->joint_torque_command_trigger_value, "torque", "Nm", [&](size_t i) { return limits->torque_min.at(i); },
+                  limits->torque_max, EventID::JOINT_TORQUE_CLAMPING_ANOMALY);
     logJointLimit(*event_logger_, *state, anomalies->joint_current_limit_violation,
                   state->motors_current, "current", "A", [&](size_t i) { return limits->current_min.at(i); },
                   limits->current_max, EventID::JOINT_CURRENT_OUT_OF_BOUND);
@@ -203,8 +231,8 @@ void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri
         case SafetyState::EMERGENCY_STOP:
             state_name = "EMERGENCY_STOP";
             break;
-        case SafetyState::DAMPING_RECOVERY:
-            state_name = "DAMPING_RECOVERY";
+        case SafetyState::DAMPING:
+            state_name = "DAMPING";
             break;
         default:
             break;
