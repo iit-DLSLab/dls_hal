@@ -111,8 +111,8 @@ void RobotLimits::init(const YAML::Node& config){
     const YAML::Node limits = nested_limits.IsDefined() && !nested_limits.IsNull()
         ? nested_limits : safety;
     if (limits) {
-        if (limits["position_min"]) position_min = limits["position_min"].as<std::vector<double>>();
-        if (limits["position_max"]) position_max = limits["position_max"].as<std::vector<double>>();
+        if (limits["position_min"]) position_min = limits["position_min_with_margin"].as<std::vector<double>>();
+        if (limits["position_max"]) position_max = limits["position_max_with_margin"].as<std::vector<double>>();
         if (limits["velocity_max"]) velocity_max = limits["velocity_max"].as<std::vector<double>>();
         if (limits["torque_max"]) torque_max = limits["torque_max"].as<std::vector<double>>();
         if (limits["current_max"]) current_max = limits["current_max"].as<std::vector<double>>();
