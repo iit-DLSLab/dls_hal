@@ -81,6 +81,15 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
+    
+    const auto virtual_joint_limit = config["robot_interface"]["safety"]["virtual_joint_limit"];
+    // Gains are either one value per joint or a scalar applied to every joint.
+    const auto per_joint_gains = [n_joint](const YAML::Node& node) {
+        return node.IsSequence() ? node.as<std::vector<double>>()
+                                 : std::vector<double>(n_joint, node.as<double>());
+    };
+    recovery_virtual_joint_limit.init(limits.position_min, limits.position_max,
+            per_joint_gains(virtual_joint_limit["k"]), per_joint_gains(virtual_joint_limit["d"]));
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -283,6 +292,11 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
         safety_state = SafetyState::EMERGENCY_STOP;
     } else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::DAMPING;
+    } else if (std::any_of(anomalies.joint_pos_limit_violation.begin(), anomalies.joint_pos_limit_violation.end(),
+                           [](bool violated) { return violated; })) {
+        safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
+    } else {
+        safety_state = SafetyState::NOMINAL;
     }
 }
 
@@ -294,6 +308,9 @@ void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& comm
             break;
         case SafetyState::DAMPING:
             recovery_damping.execute(state, commands);
+            break;
+        case SafetyState::VIRTUAL_ENDSTOP_ENFORCING:
+            recovery_virtual_joint_limit.execute(state, commands);
             break;
         default:
             break;

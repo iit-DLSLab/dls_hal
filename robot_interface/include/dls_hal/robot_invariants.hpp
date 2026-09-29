@@ -221,7 +221,8 @@ public:
     enum class SafetyState{
         NOMINAL=0,
         EMERGENCY_STOP,
-        DAMPING
+        DAMPING,
+        VIRTUAL_ENDSTOP_ENFORCING,
     } safety_state;
 
     SafetyState getSafetyState() const;
@@ -254,6 +255,7 @@ public:
         // Recovery procedures
         RecoveryESTOP recovery_estop;
         RecoveryDamping recovery_damping;
+        RecoveryVirtualJointLimit recovery_virtual_joint_limit;
 };
 
 enum class CONTROL_MODE{
