@@ -227,9 +227,13 @@ public:
 
     SafetyState getSafetyState() const;
 
-    TLimits limits;
+    // Limits are loaded once by init() and cannot be changed afterwards.
+    const TLimits& getLimits() const;
 
     void manageAnomalies(const TState& state, TCommands& commands);
+
+    protected:
+        TLimits limits;
 
     private:
         void setFungoPressed(bool pressed);

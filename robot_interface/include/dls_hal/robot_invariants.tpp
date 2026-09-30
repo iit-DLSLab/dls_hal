@@ -88,8 +88,15 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         return node.IsSequence() ? node.as<std::vector<double>>()
                                  : std::vector<double>(n_joint, node.as<double>());
     };
-    recovery_virtual_joint_limit.init(limits.position_min, limits.position_max,
-            per_joint_gains(virtual_joint_limit["k"]), per_joint_gains(virtual_joint_limit["d"]));
+    recovery_virtual_joint_limit.init(per_joint_gains(virtual_joint_limit["k"]), per_joint_gains(virtual_joint_limit["d"]));
+    // Recovery modes keep their own copy: limits are fixed after init().
+    const RecoveryLimits recovery_limits{
+        limits.position_min, limits.position_max,
+        limits.velocity_min, limits.velocity_max,
+        limits.torque_min, limits.torque_max};
+    recovery_estop.setLimits(recovery_limits);
+    recovery_damping.setLimits(recovery_limits);
+    recovery_virtual_joint_limit.setLimits(recovery_limits);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -274,10 +281,27 @@ void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands
     checkCommands(commands);
     // set safety state machine based on the anomalies detected
     setSafetyState();
+    // Debug: report safety state transitions only (this runs every control cycle).
+    static SafetyState last_safety_state = SafetyState::NOMINAL;
+    if (safety_state != last_safety_state) {
+        std::cout << "[safety] state " << static_cast<int>(last_safety_state)
+                  << " -> " << static_cast<int>(safety_state) << std::endl;
+        for (size_t i = 0; i < anomalies.joint_pos_limit_violation.size(); ++i) {
+            if (anomalies.joint_pos_limit_violation[i])
+                std::cout << "[safety]   joint " << i << " q=" << state.position[i]
+                          << " limits=[" << limits.position_min[i] << ", " << limits.position_max[i] << "]" << std::endl;
+        }
+        last_safety_state = safety_state;
+    }
     // execute the corresponding recovery mode based on the safety state machine
     if(safety_state != SafetyState::NOMINAL){
         executeRecoveryMode(state, commands);
     }
+}
+
+ROBOT_SAFETY_TEMPLATE
+const TLimits& ROBOT_SAFETY_TYPE::getLimits() const {
+    return limits;
 }
 
 ROBOT_SAFETY_TEMPLATE
@@ -290,11 +314,11 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
     if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
         anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::EMERGENCY_STOP;
-    } else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
-        safety_state = SafetyState::DAMPING;
-    } else if (std::any_of(anomalies.joint_pos_limit_violation.begin(), anomalies.joint_pos_limit_violation.end(),
+    }else if (std::any_of(anomalies.joint_pos_limit_violation.begin(), anomalies.joint_pos_limit_violation.end(),
                            [](bool violated) { return violated; })) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
+    }else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
+        safety_state = SafetyState::DAMPING;
     } else {
         safety_state = SafetyState::NOMINAL;
     }
@@ -304,13 +328,13 @@ ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& commands) {
     switch (safety_state) {
         case SafetyState::EMERGENCY_STOP:
-            recovery_estop.execute(state, commands);
+            recovery_estop.apply(state, commands);
             break;
         case SafetyState::DAMPING:
-            recovery_damping.execute(state, commands);
+            recovery_damping.apply(state, commands);
             break;
         case SafetyState::VIRTUAL_ENDSTOP_ENFORCING:
-            recovery_virtual_joint_limit.execute(state, commands);
+            recovery_virtual_joint_limit.apply(state, commands);
             break;
         default:
             break;

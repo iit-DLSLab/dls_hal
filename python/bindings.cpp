@@ -188,7 +188,7 @@ NB_MODULE(dls_hal, m) {
             })
         // The atomic flag makes RobotAnomalies non-copyable; expose it by reference.
         .def_ro("anomalies", &GenericSafety::anomalies)
-        .def_rw("limits", &GenericSafety::limits);
+        .def_prop_ro("limits", &GenericSafety::getLimits);
 
     nb::enum_<GenericLowLevelControl::CONTROL_MODE>(m, "ControlMode")
         .value("POSITION_CONTROL",

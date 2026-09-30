@@ -119,7 +119,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
 void FastDDSEventChecker::checkJointLimitEvents(const GenericRobotInterface& ri)
 {
     const auto* state = &ri.state;
-    const auto* limits = &ri.safety.limits;
+    const auto* limits = &ri.safety.getLimits();
     const auto* anomalies = &ri.safety.anomalies;
 
     logJointLimit(*event_logger_, *state, anomalies->joint_pos_limit_violation,
@@ -177,7 +177,7 @@ void FastDDSEventChecker::checkInvalidValueEvents(const GenericRobotInterface& r
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)
 {
     const auto* state = &ri.state;
-    const auto* limits = &ri.safety.limits;
+    const auto* limits = &ri.safety.getLimits();
     const auto* anomalies = &ri.safety.anomalies;
 
     std::ostringstream batteries;
