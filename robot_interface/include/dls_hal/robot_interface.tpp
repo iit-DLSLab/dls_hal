@@ -32,7 +32,7 @@ bool ROBOT_INTERFACE_TYPE::init(const YAML::Node& config){
 
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::checkState(){
-    safety.checkState(state);
+    safety.checkState(state, low_level_control.commands);
 }
 
 ROBOT_INTERFACE_TEMPLATE

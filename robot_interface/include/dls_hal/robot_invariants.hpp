@@ -135,6 +135,7 @@ public:
     std::vector<double> current_max;
     std::vector<double> motor_temperature_min;
     std::vector<double> motor_temperature_max;
+    std::vector<double> joint_inertia;
     double percentage_battery_charge_min;
 };
 
@@ -142,6 +143,7 @@ class RobotAnomalies{
 public:
     
     std::vector<bool> joint_pos_limit_violation;
+    std::vector<bool> joint_pos_limit_violation_predicted;
     std::vector<bool> joint_vel_limit_violation;
     std::vector<bool> joint_torque_limit_violation;
     std::vector<bool> joint_current_limit_violation;
@@ -190,7 +192,7 @@ public:
     
     void init(const YAML::Node& config);
     
-    virtual void checkState(const TState& state);
+    virtual void checkState(const TState& state, TCommands& commands);
 
     virtual void checkCommands(TCommands& commands);
 
@@ -238,6 +240,22 @@ public:
     private:
         void setFungoPressed(bool pressed);
         void checkBreakingMechanics(size_t joint_index, double torque);
+        /**
+         * @brief Position thresholds shrunk by the distance needed to brake the joint 
+         *        at its current velocity with the torque left after torque_command.
+        
+         * 
+         * @param joint_index 
+         * @param velocity 
+         * @param torque_command 
+         * @param threshold_min 
+         * @param threshold_max 
+         */
+        void computePredictedPositionThresholds(size_t joint_index, 
+                                                const double velocity, 
+                                                const double torque_command,
+                                                double& threshold_min, 
+                                                double& threshold_max) const;
         void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf, std::vector<bool>& anomaly_limit_min, std::vector<bool>& anomaly_limit_max, std::vector<double>& trigger_value);
         void setSafetyState();
         void executeRecoveryMode(const TState& state, TCommands& commands);

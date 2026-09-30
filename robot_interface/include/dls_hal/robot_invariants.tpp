@@ -31,6 +31,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         throw std::invalid_argument("robot_interface.events_frequency must be finite and strictly positive (Hz)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
+    anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
     anomalies.joint_current_limit_violation.resize(n_joint, false);
     anomalies.joint_torque_limit_violation.resize(n_joint, false);
@@ -102,12 +103,43 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
+void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index, 
+                                                           const double velocity, 
+                                                           const double torque_command,
+                                                           double& threshold_min, 
+                                                           double& threshold_max) const {
+    const size_t i = joint_index;
+    // Considering controller torque moving towards the limit.
+    // Ignore controller braking contribution (torque driving away from limit) for robustness.
+    constexpr double tau_net_eps = 1e-6; // Denominator regulation term
+    const double tau_net_max = std::max(std::abs(limits.torque_min[i]) - std::max( torque_command, 0.0), tau_net_eps);
+    const double tau_net_min = std::max(std::abs(limits.torque_max[i]) - std::max(-torque_command, 0.0), tau_net_eps);
+    const double delta_q_max =
+        velocity > 0.0
+        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_max)
+        : 0.0;
+    const double delta_q_min =
+        velocity < 0.0
+        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_min)
+        : 0.0;
+    threshold_max = limits.position_max[i] - delta_q_max;
+    threshold_min = limits.position_min[i] + delta_q_min;
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::checkState(const TState& state, TCommands& commands) {
     setFungoPressed(false);
     anomalies.breaking_mechanics = false;
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
+        double joint_position_threshold_min;
+        double joint_position_threshold_max;
+        computePredictedPositionThresholds(i, state.velocity[i], commands.torque[i],
+                                           joint_position_threshold_min, joint_position_threshold_max);
+
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
+        anomalies.joint_pos_limit_violation_predicted[i] = checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
+        
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
         anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motors_current[i], limits.current_min[i], limits.current_max[i]);
@@ -226,6 +258,8 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
     for (size_t i = 0; i < anomalies.joint_pos_limit_violation.size(); ++i) {
         if (anomalies.joint_pos_limit_violation[i])
             std::cout << "Joint " << i << " position limit violation detected." << std::endl;
+        if(anomalies.joint_pos_limit_violation_predicted[i])
+            std::cout << "Joint " << i << " possible position limit violation predicted." << std::endl;
         if (anomalies.joint_vel_limit_violation[i])
             std::cout << "Joint " << i << " velocity limit violation detected." << std::endl;
         if (anomalies.joint_torque_limit_violation[i])
@@ -277,7 +311,7 @@ const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStress
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
-    checkState(state);
+    checkState(state, commands);
     checkCommands(commands);
     // set safety state machine based on the anomalies detected
     setSafetyState();
@@ -286,10 +320,9 @@ void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands
     if (safety_state != last_safety_state) {
         std::cout << "[safety] state " << static_cast<int>(last_safety_state)
                   << " -> " << static_cast<int>(safety_state) << std::endl;
-        for (size_t i = 0; i < anomalies.joint_pos_limit_violation.size(); ++i) {
-            if (anomalies.joint_pos_limit_violation[i])
-                std::cout << "[safety]   joint " << i << " q=" << state.position[i]
-                          << " limits=[" << limits.position_min[i] << ", " << limits.position_max[i] << "]" << std::endl;
+        for (size_t i = 0; i < anomalies.joint_pos_limit_violation_predicted.size(); ++i) {
+            if (anomalies.joint_pos_limit_violation_predicted[i])
+                std::cout << "[safety]   joint " << i << " q=" << state.position[i] << std::endl;
         }
         last_safety_state = safety_state;
     }
@@ -314,7 +347,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
     if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
         anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::EMERGENCY_STOP;
-    }else if (std::any_of(anomalies.joint_pos_limit_violation.begin(), anomalies.joint_pos_limit_violation.end(),
+    }else if (std::any_of(anomalies.joint_pos_limit_violation_predicted.begin(), anomalies.joint_pos_limit_violation_predicted.end(),
                            [](bool violated) { return violated; })) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
     }else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
