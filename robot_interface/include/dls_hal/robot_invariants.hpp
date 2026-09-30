@@ -192,7 +192,7 @@ public:
     
     void init(const YAML::Node& config);
     
-    virtual void checkState(const TState& state, TCommands& commands);
+    virtual void checkState(const TState& state);
 
     virtual void checkCommands(TCommands& commands);
 
@@ -253,7 +253,7 @@ public:
          */
         void computePredictedPositionThresholds(size_t joint_index, 
                                                 const double velocity, 
-                                                const double torque_command,
+                                                const double torque,
                                                 double& threshold_min, 
                                                 double& threshold_max) const;
         void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf, std::vector<bool>& anomaly_limit_min, std::vector<bool>& anomaly_limit_max, std::vector<double>& trigger_value);

@@ -86,49 +86,80 @@ void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) 
     }
 }
 
-void RecoveryVirtualJointLimit::init(const std::vector<double>& k, const std::vector<double>& d){
-    if (k.size() != d.size()) {
-        throw std::invalid_argument("Virtual joint limit k/d must have one entry per joint");
+void RecoveryVirtualJointLimit::init(size_t n_joint){
+    if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
+        throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
     }
-    const auto valid_gain = [](double gain) { return std::isfinite(gain) && gain >= 0.0; };
-    if (!std::all_of(k.begin(), k.end(), valid_gain) || !std::all_of(d.begin(), d.end(), valid_gain)) {
-        throw std::invalid_argument("Virtual joint limit gains must be finite and non-negative");
+    k_.assign(n_joint, 0.0);
+    d_.assign(n_joint, 0.0);
+    q_min_trigger_ = limits_.position_min;
+    q_max_trigger_ = limits_.position_max;
+}
+
+void RecoveryVirtualJointLimit::reset(size_t index){
+    if (index >= k_.size() || index >= d_.size()
+        || index >= q_min_trigger_.size() || index >= q_max_trigger_.size()) {
+        return;
     }
-    k_ = k;
-    d_ = d;
+    k_[index] = 0.0;
+    d_[index] = 0.0;
+    q_min_trigger_[index] = limits_.position_min[index];
+    q_max_trigger_[index] = limits_.position_max[index];
 }
 void RecoveryVirtualJointLimit::setParams(size_t index,
                                            const double& inertia, 
                                            const double& position, 
                                            const double& velocity, 
-                                           const double& torque)
+                                           const double& torque,
+                                           const double& q_min_trigger,
+                                           const double& q_max_trigger)
 {
 
-    if(index > k_.size() || index > d_.size()){
+    if(index >= k_.size() || index >= d_.size() 
+        || index >= q_min_trigger_.size() || index >= q_max_trigger_.size()){
         return;
     }
 
-    const bool upper_limit = velocity > 0.0;
+    const double q_min = limits_.position_min[index];
+    const double q_max = limits_.position_max[index];
+
+    // The side is the threshold the position crossed; the velocity sign only breaks the
+    // tie when both are crossed (thresholds overlapping at high speed or saturated torque).
+    const bool above = position > q_max_trigger;
+    const bool below = position < q_min_trigger;
+    if (!above && !below) {
+        return;
+    }
+    const bool upper_limit = (above && below) ? velocity > 0.0 : above;
     const double toward_sign = upper_limit ? 1.0 : -1.0;
 
-    const double dq_remaining = upper_limit
-        ? limits_.position_max[index] - position
-        : position - limits_.position_min[index];
+    // Only the velocity toward the limit has to be absorbed.
+    const double considered_velocity = std::max(toward_sign * velocity, 0.0);
+
+    // Anchor where the joint is now, kept within the position limits: the crossed
+    // threshold itself can lie beyond the opposite limit when the torque saturates.
+    const double anchor = std::clamp(position, q_min, q_max);
+
+    constexpr double dq_eps = 1e-6; // Denominator regulation term
+    const double dq_remaining = std::max(upper_limit ? q_max - anchor : anchor - q_min, dq_eps);
 
     const double tau_push = std::max(toward_sign * torque, 0.0);
 
     double new_k =
-        (inertia * velocity * velocity)/ (dq_remaining * dq_remaining)
+        (inertia * considered_velocity * considered_velocity)/ (dq_remaining * dq_remaining)
         + 2.0 * tau_push / dq_remaining;
 
     double new_d = 2.0 * std::sqrt(new_k * inertia);
 
-    if (!std::isfinite(new_k) || !std::isfinite(new_d) || new_k < 0.0 || new_d < 0.0) {
+    if (!std::isfinite(new_k) || !std::isfinite(new_d) || new_k < 0.0 || new_d < 0.0
+        || !std::isfinite(anchor)) {
         return;
     }
 
     k_[index] = new_k;
     d_[index] = new_d;
+    q_max_trigger_[index] = upper_limit ? anchor : q_max;
+    q_min_trigger_[index] = upper_limit ? q_min : anchor;
 }
 
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
@@ -136,10 +167,10 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
                                        limits_.position_min.size(), k_.size()});
     for (std::size_t id = 0; id < joint_count; ++id) {
         const double q = state.position[id];
-        if (q > limits_.position_max[id]) {
-            commands.torque[id] += k_[id] * (limits_.position_max[id] - q) - d_[id] * state.velocity[id];
-        } else if (q < limits_.position_min[id]) {
-            commands.torque[id] += k_[id] * (limits_.position_min[id] - q) - d_[id] * state.velocity[id];
+        if (q > q_max_trigger_[id]) {
+            commands.torque[id] += k_[id] * (q_max_trigger_[id] - q) - d_[id] * state.velocity[id];
+        } else if (q < q_min_trigger_[id]) {
+            commands.torque[id] += k_[id] * (q_min_trigger_[id] - q) - d_[id] * state.velocity[id];
         }
     }
 }

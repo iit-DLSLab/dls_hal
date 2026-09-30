@@ -83,13 +83,6 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
     
-    const auto virtual_joint_limit = config["robot_interface"]["safety"]["virtual_joint_limit"];
-    // Gains are either one value per joint or a scalar applied to every joint.
-    const auto per_joint_gains = [n_joint](const YAML::Node& node) {
-        return node.IsSequence() ? node.as<std::vector<double>>()
-                                 : std::vector<double>(n_joint, node.as<double>());
-    };
-    recovery_virtual_joint_limit.init(per_joint_gains(virtual_joint_limit["k"]), per_joint_gains(virtual_joint_limit["d"]));
     // Recovery modes keep their own copy: limits are fixed after init().
     const RecoveryLimits recovery_limits{
         limits.position_min, limits.position_max,
@@ -98,6 +91,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     recovery_estop.setLimits(recovery_limits);
     recovery_damping.setLimits(recovery_limits);
     recovery_virtual_joint_limit.setLimits(recovery_limits);
+    recovery_virtual_joint_limit.init(n_joint);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -105,15 +99,17 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index, 
                                                            const double velocity, 
-                                                           const double torque_command,
+                                                           const double torque,
                                                            double& threshold_min, 
                                                            double& threshold_max) const {
     const size_t i = joint_index;
     // Considering controller torque moving towards the limit.
     // Ignore controller braking contribution (torque driving away from limit) for robustness.
     constexpr double tau_net_eps = 1e-6; // Denominator regulation term
-    const double tau_net_max = std::max(std::abs(limits.torque_min[i]) - std::max( torque_command, 0.0), tau_net_eps);
-    const double tau_net_min = std::max(std::abs(limits.torque_max[i]) - std::max(-torque_command, 0.0), tau_net_eps);
+    const double tau_net_max = 
+        std::max(std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
+    const double tau_net_min = 
+        std::max(std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
     const double delta_q_max =
         velocity > 0.0
         ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_max)
@@ -127,21 +123,28 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::checkState(const TState& state, TCommands& commands) {
+void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     setFungoPressed(false);
     anomalies.breaking_mechanics = false;
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
         double joint_position_threshold_min;
         double joint_position_threshold_max;
-        computePredictedPositionThresholds(i, state.velocity[i], commands.torque[i],
+        computePredictedPositionThresholds(i, state.velocity[i], state.torque[i],
                                            joint_position_threshold_min, joint_position_threshold_max);
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
-        anomalies.joint_pos_limit_violation_predicted[i] = checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
-        if(anomalies.joint_pos_limit_violation_predicted[i] && safety_state == SafetyState::NOMINAL)
-        {
-            recovery_virtual_joint_limit.setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i], commands.torque[i]);
+        const bool was_predicted = anomalies.joint_pos_limit_violation_predicted[i];
+        const bool is_predicted = checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
+        anomalies.joint_pos_limit_violation_predicted[i] = is_predicted;
+        // Per-joint edges: gains and anchor are set once when the prediction rises, and
+        // cleared when it falls so a joint no longer predicted gets no stale spring.
+        if (is_predicted && !was_predicted) {
+            recovery_virtual_joint_limit
+                .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
+                           state.torque[i], joint_position_threshold_min, joint_position_threshold_max);
+        } else if (!is_predicted && was_predicted) {
+            recovery_virtual_joint_limit.reset(i);
         }
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
@@ -314,7 +317,7 @@ const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStress
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
-    checkState(state, commands);
+    checkState(state);
     checkCommands(commands);
     // set safety state machine based on the anomalies detected
     setSafetyState();

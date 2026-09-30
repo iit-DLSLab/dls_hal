@@ -58,10 +58,16 @@ private:
 
 class RecoveryVirtualJointLimit : public RecoveryMode {
 public:
-    // k and d are per-joint gains; the position limits come from setLimits().
-    void init(const std::vector<double>& k, const std::vector<double>& d);
+    // Call after setLimits(): the spring anchors start at the position limits.
+    void init(size_t n_joint);
+    // Called on the rising edge of a predicted limit violation: anchors the spring at the
+    // current position (clamped within the position limits) on the side of the crossed
+    // threshold, with gains that stop the joint before that limit.
     void setParams(size_t index, const double& inertia, const double& position, 
-                   const double& velocity, const double& torque);
+                   const double& velocity, const double& torque, 
+                   const double& q_min_trigger, const double& q_max_trigger);
+    // Called on the falling edge: anchors back at the position limits, no gains.
+    void reset(size_t index);
 
 protected:
     // Adds a spring-damper torque pushing each out-of-limit joint back inside.
@@ -70,6 +76,8 @@ protected:
 private:
     std::vector<double> k_;
     std::vector<double> d_;
+    std::vector<double> q_min_trigger_;
+    std::vector<double> q_max_trigger_;
 };
 
 #endif
