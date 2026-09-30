@@ -97,6 +97,39 @@ void RecoveryVirtualJointLimit::init(const std::vector<double>& k, const std::ve
     k_ = k;
     d_ = d;
 }
+void RecoveryVirtualJointLimit::setParams(size_t index,
+                                           const double& inertia, 
+                                           const double& position, 
+                                           const double& velocity, 
+                                           const double& torque)
+{
+
+    if(index > k_.size() || index > d_.size()){
+        return;
+    }
+
+    const bool upper_limit = velocity > 0.0;
+    const double toward_sign = upper_limit ? 1.0 : -1.0;
+
+    const double dq_remaining = upper_limit
+        ? limits_.position_max[index] - position
+        : position - limits_.position_min[index];
+
+    const double tau_push = std::max(toward_sign * torque, 0.0);
+
+    double new_k =
+        (inertia * velocity * velocity)/ (dq_remaining * dq_remaining)
+        + 2.0 * tau_push / dq_remaining;
+
+    double new_d = 2.0 * std::sqrt(new_k * inertia);
+
+    if (!std::isfinite(new_k) || !std::isfinite(new_d) || new_k < 0.0 || new_d < 0.0) {
+        return;
+    }
+
+    k_[index] = new_k;
+    d_[index] = new_d;
+}
 
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
     const auto joint_count = std::min({state.position.size(), state.velocity.size(), commands.torque.size(),

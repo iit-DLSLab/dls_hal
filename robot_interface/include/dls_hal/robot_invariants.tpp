@@ -139,7 +139,10 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state, TCommands& commands) {
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         anomalies.joint_pos_limit_violation_predicted[i] = checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
-        
+        if(anomalies.joint_pos_limit_violation_predicted[i] && safety_state == SafetyState::NOMINAL)
+        {
+            recovery_virtual_joint_limit.setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i], commands.torque[i]);
+        }
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
         anomalies.joint_current_limit_violation[i] = checkJointStateLimit(state.motors_current[i], limits.current_min[i], limits.current_max[i]);

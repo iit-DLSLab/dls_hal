@@ -2,6 +2,7 @@
 #define DLS_HAL_RECOVERY_MODES_HPP
 
 #include <vector>
+#include <cmath>
 
 class RobotState;
 class RobotCommands;
@@ -59,6 +60,8 @@ class RecoveryVirtualJointLimit : public RecoveryMode {
 public:
     // k and d are per-joint gains; the position limits come from setLimits().
     void init(const std::vector<double>& k, const std::vector<double>& d);
+    void setParams(size_t index, const double& inertia, const double& position, 
+                   const double& velocity, const double& torque);
 
 protected:
     // Adds a spring-damper torque pushing each out-of-limit joint back inside.
