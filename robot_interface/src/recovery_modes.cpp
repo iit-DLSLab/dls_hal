@@ -167,9 +167,11 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
                                        limits_.position_min.size(), k_.size()});
     for (std::size_t id = 0; id < joint_count; ++id) {
         const double q = state.position[id];
-        if (q > q_max_trigger_[id]) {
+        // Inclusive: the anchor is the position at the trigger, so the triggering cycle
+        // already brakes through the damping term (zero penetration, no spring force yet).
+        if (q >= q_max_trigger_[id]) {
             commands.torque[id] += k_[id] * (q_max_trigger_[id] - q) - d_[id] * state.velocity[id];
-        } else if (q < q_min_trigger_[id]) {
+        } else if (q <= q_min_trigger_[id]) {
             commands.torque[id] += k_[id] * (q_min_trigger_[id] - q) - d_[id] * state.velocity[id];
         }
     }

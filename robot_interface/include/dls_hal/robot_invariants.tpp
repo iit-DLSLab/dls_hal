@@ -29,6 +29,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     events_frequency = events_frequency_node ? events_frequency_node.as<double>() : 10.0;
     if (!std::isfinite(events_frequency) || events_frequency <= 0.0)
         throw std::invalid_argument("robot_interface.events_frequency must be finite and strictly positive (Hz)");
+    const auto control_period_node = config["robot_interface"]["safety"]["control_period"];
+    control_period = control_period_node ? control_period_node.as<double>() : 0.0;
+    if (!std::isfinite(control_period) || control_period < 0.0)
+        control_period = 0.0
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
@@ -110,13 +114,15 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
         std::max(std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
     const double tau_net_min = 
         std::max(std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
+    // Braking distance at full available torque, plus the distance covered during the
+    // up to one control period between the threshold crossing and its detection.
     const double delta_q_max =
         velocity > 0.0
-        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_max)
+        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_max) + velocity * control_period
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_min)
+        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_min) - velocity * control_period
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;

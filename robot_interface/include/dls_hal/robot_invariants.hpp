@@ -273,6 +273,8 @@ public:
         // Rate at which the high-level interface's background thread checks
         // for events to log, decoupled from the control loop's frequency.
         double events_frequency; // Hz
+        // Control loop period, needed for delay compensation
+        double control_period; // seconds; 0 disables delay compensation
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;
