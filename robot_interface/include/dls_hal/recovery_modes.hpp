@@ -70,7 +70,8 @@ public:
     void reset(size_t index);
 
 protected:
-    // Adds a spring-damper torque pushing each out-of-limit joint back inside.
+    // Replaces the torque of each triggered joint past its anchor with a spring-damper
+    // torque that stops it before the limit.
     void execute(const RobotState& state, RobotCommands& commands) override;
 
 private:
