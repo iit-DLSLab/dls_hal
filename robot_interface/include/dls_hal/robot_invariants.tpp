@@ -99,7 +99,12 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     recovery_estop.setLimits(recovery_limits);
     recovery_damping.setLimits(recovery_limits);
     recovery_virtual_joint_limit.setLimits(recovery_limits);
-    recovery_virtual_joint_limit.init(n_joint);
+    const auto release_tolerance_node = config["robot_interface"]["safety"]["virtual_joint_limit_release_tolerance"];
+    double release_tolerance = 1e-3;
+    if (release_tolerance_node){
+        release_tolerance = release_tolerance_node.as<double>();
+    }
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -153,19 +158,20 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                                            joint_position_threshold_min, joint_position_threshold_max);
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
-        const bool was_predicted = anomalies.joint_pos_limit_violation_predicted[i];
         // Slow joints do not activate the virtual joint limit, even past the position limits.
         const bool is_predicted = std::abs(state.velocity[i]) >= virtual_joint_limit_min_velocity
             && checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
         anomalies.joint_pos_limit_violation_predicted[i] = is_predicted;
-        // Per-joint edges: gains and anchor are set once when the prediction rises, and
-        // cleared when it falls so a joint no longer predicted gets no stale spring.
-        if (is_predicted && !was_predicted) {
-            // Zero-torque passed instead of state.torque[i], recovery overriding the command
-            recovery_virtual_joint_limit
-                .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
-                           0.0, joint_position_threshold_min, joint_position_threshold_max);
-        } else if (!is_predicted && was_predicted) {
+        // Per joint: activated when the violation is predicted, then kept active, whatever
+        // the prediction does, until the spring has brought the joint back to its anchor.
+        if (!recovery_virtual_joint_limit.isActive(i)) {
+            if (is_predicted) {
+                // Zero-torque passed instead of state.torque[i], recovery overriding the command
+                recovery_virtual_joint_limit
+                    .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
+                               0.0, joint_position_threshold_min, joint_position_threshold_max);
+            }
+        } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
             recovery_virtual_joint_limit.reset(i);
         }
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
@@ -375,8 +381,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
     if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
         anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::EMERGENCY_STOP;
-    }else if (std::any_of(anomalies.joint_pos_limit_violation_predicted.begin(), anomalies.joint_pos_limit_violation_predicted.end(),
-                           [](bool violated) { return violated; })) {
+    }else if (recovery_virtual_joint_limit.anyActive()) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
     }else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::DAMPING;

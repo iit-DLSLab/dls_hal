@@ -86,14 +86,19 @@ void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) 
     }
 }
 
-void RecoveryVirtualJointLimit::init(size_t n_joint){
+void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance){
     if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
         throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
+    }
+    if (!std::isfinite(release_tolerance) || release_tolerance < 0.0) {
+        throw std::invalid_argument("Virtual joint limit release tolerance must be finite and non-negative");
     }
     k_.assign(n_joint, 0.0);
     d_.assign(n_joint, 0.0);
     q_min_trigger_ = limits_.position_min;
     q_max_trigger_ = limits_.position_max;
+    side_.assign(n_joint, 0);
+    release_tolerance_ = release_tolerance;
 }
 
 void RecoveryVirtualJointLimit::reset(size_t index){
@@ -105,6 +110,24 @@ void RecoveryVirtualJointLimit::reset(size_t index){
     d_[index] = 0.0;
     q_min_trigger_[index] = limits_.position_min[index];
     q_max_trigger_[index] = limits_.position_max[index];
+    side_[index] = 0;
+}
+
+bool RecoveryVirtualJointLimit::isActive(size_t index) const {
+    return index < side_.size() && side_[index] != 0;
+}
+
+bool RecoveryVirtualJointLimit::anyActive() const {
+    return std::any_of(side_.begin(), side_.end(), [](int side) { return side != 0; });
+}
+
+bool RecoveryVirtualJointLimit::hasReturnedToAnchor(size_t index, double position, double velocity) const {
+    if (!isActive(index)) {
+        return false;
+    }
+    const double side = side_[index];
+    const double anchor = side > 0.0 ? q_max_trigger_[index] : q_min_trigger_[index];
+    return side * (position - anchor) <= release_tolerance_ && side * velocity <= 0.0;
 }
 void RecoveryVirtualJointLimit::setParams(size_t index,
                                            const double& inertia, 
@@ -170,24 +193,24 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     d_[index] = new_d;
     q_max_trigger_[index] = upper_limit ? anchor : q_max;
     q_min_trigger_[index] = upper_limit ? q_min : anchor;
+    side_[index] = upper_limit ? 1 : -1;
 }
 
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
     const auto joint_count = std::min({state.position.size(), state.velocity.size(), commands.torque.size(),
-                                       limits_.position_min.size(), k_.size()});
+                                       limits_.position_min.size(), side_.size()});
     for (std::size_t id = 0; id < joint_count; ++id) {
-        // Only triggered joints have gains; the others keep their controller torque.
-        if (k_[id] <= 0.0) {
+        // Only active joints are braked; the others keep their controller torque.
+        if (side_[id] == 0) {
             continue;
         }
         const double q = state.position[id];
+        const double anchor = side_[id] > 0 ? q_max_trigger_[id] : q_min_trigger_[id];
         // Inclusive: the anchor is the position at the trigger, so the triggering cycle
         // already brakes through the damping term (zero penetration, no spring force yet).
-        // The spring-damper torque replaces the controller torque.
-        if (q >= q_max_trigger_[id]) {
-            commands.torque[id] = k_[id] * (q_max_trigger_[id] - q) - d_[id] * state.velocity[id];
-        } else if (q <= q_min_trigger_[id]) {
-            commands.torque[id] = k_[id] * (q_min_trigger_[id] - q) - d_[id] * state.velocity[id];
+        // The spring-damper torque replaces the controller torque until the joint is back.
+        if (side_[id] * (q - anchor) >= 0.0) {
+            commands.torque[id] = k_[id] * (anchor - q) - d_[id] * state.velocity[id];
         }
     }
 }
