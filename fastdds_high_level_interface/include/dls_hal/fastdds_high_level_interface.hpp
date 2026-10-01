@@ -43,12 +43,16 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         dls::WriterPtr<dls2_interface::msg::Imu> output_imu;
         dls::WriterPtr<dls2_interface::msg::BatteryStatus> output_battery_status;
         dls::WriterPtr<dls2_interface::msg::ControlSignal> output_hal_commands_feedback;
+        dls::WriterPtr<dls2_interface::msg::HalSafetyDebug> output_hal_safety_debug;
     private:
         // Runs on event_thread_, decoupled from the HAL's real-time frequency:
         // processes the event queue and logs events.
         void eventLoggingLoop();
 
         FastDDSEventChecker event_checker_;
+
+        // Reused every write() to collect the virtual joint limit state for output_hal_safety_debug.
+        VirtualJointLimitDebug virtual_joint_limit_debug_;
 
         // Overridden by robot_interface.events_frequency (source.safety.getEventsFrequency()) in init().
         std::chrono::duration<double> event_check_period_{std::chrono::duration<double>(0.1)};

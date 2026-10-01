@@ -344,6 +344,18 @@ const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStress
 }
 
 ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug) const {
+    debug.predicted = anomalies.joint_pos_limit_violation_predicted;
+    debug.side = recovery_virtual_joint_limit.getSide();
+    debug.k = recovery_virtual_joint_limit.getK();
+    debug.d = recovery_virtual_joint_limit.getD();
+    debug.anchor.resize(debug.side.size());
+    for (size_t i = 0; i < debug.anchor.size(); ++i) {
+        debug.anchor[i] = recovery_virtual_joint_limit.getAnchor(i);
+    }
+}
+
+ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
     checkState(state);
     checkCommands(commands);

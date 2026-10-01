@@ -185,6 +185,15 @@ public:
     bool breaking_mechanics{false};
 };
 
+// Per-joint snapshot of the virtual joint limit, for debugging.
+struct VirtualJointLimitDebug{
+    std::vector<bool> predicted; // joint_pos_limit_violation_predicted
+    std::vector<int> side;       // +1 braking toward position_max, -1 toward position_min, 0 inactive
+    std::vector<double> anchor;  // [rad], NaN when inactive
+    std::vector<double> k;       // [Nm/rad]
+    std::vector<double> d;       // [Nm*s/rad]
+};
+
 template <typename TState, typename TRef, typename TCommands, typename TLimits>
 class RobotSafety{
 public:
@@ -216,6 +225,9 @@ public:
     // Each joint's first triggering torque while breaking_mechanics is
     // latched (see mechanical_stress_trigger_torque below).
     const std::vector<std::optional<double>>& getMechanicalStressTriggerTorque() const;
+
+    // Fills debug with the current virtual joint limit state (resized to one entry per joint).
+    void getVirtualJointLimitDebug(VirtualJointLimitDebug& debug) const;
 
     // Robot anomalies
     RobotAnomalies anomalies;

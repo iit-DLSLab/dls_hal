@@ -42,6 +42,8 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     dls::topics::battery_status);
     output_hal_commands_feedback = transport.buildOutput<dls2_interface::msg::ControlSignal>(
     dls::topics::hal_commands_feedback);
+    output_hal_safety_debug = transport.buildOutput<dls2_interface::msg::HalSafetyDebug>(
+    dls::topics::hal_safety_debug);
 
     // init inputs
     input_control_signal->msg.joints_position().resize(source.ref.position.size(), 0.0);
@@ -125,6 +127,17 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     output_hal_commands_feedback->msg.joints_torques() = source.low_level_control.commands.torque;
     output_hal_commands_feedback->msg.kp() = source.ref.kp;
     output_hal_commands_feedback->msg.kd() = source.ref.kd;
+
+    // publish hal safety debug
+    source.safety.getVirtualJointLimitDebug(virtual_joint_limit_debug_);
+    auto& safety_debug = output_hal_safety_debug->msg;
+    safety_debug.safety_state() = static_cast<std::uint8_t>(source.safety.getSafetyState());
+    safety_debug.joint_pos_limit_violation_predicted() = virtual_joint_limit_debug_.predicted;
+    safety_debug.virtual_joint_limit_side().assign(virtual_joint_limit_debug_.side.begin(),
+                                                   virtual_joint_limit_debug_.side.end());
+    safety_debug.virtual_joint_limit_anchor() = virtual_joint_limit_debug_.anchor;
+    safety_debug.virtual_joint_limit_k() = virtual_joint_limit_debug_.k;
+    safety_debug.virtual_joint_limit_d() = virtual_joint_limit_debug_.d;
 
     transport.write();
 }

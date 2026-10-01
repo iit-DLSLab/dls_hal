@@ -94,6 +94,21 @@ public:
     bool anyActive() const;
 
     /**
+     * @brief Per-joint spring stiffness [Nm/rad], damping [Nm*s/rad] and side (+1 braking
+     *        toward position_max, -1 toward position_min, 0 inactive) of the last activation.
+     */
+    const std::vector<double>& getK() const;
+    const std::vector<double>& getD() const;
+    const std::vector<int>& getSide() const;
+
+    /**
+     * @brief Anchor [rad] of an active joint, NaN when the joint is inactive.
+     * 
+     * @param index 
+     */
+    double getAnchor(size_t index) const;
+
+    /**
      * @brief True once an active joint is back at its anchor (within release_tolerance) and no
      *        longer moving toward the limit: the spring has brought it back where it triggered.
      * 

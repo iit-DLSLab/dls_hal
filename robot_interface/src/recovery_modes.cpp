@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -119,6 +120,25 @@ bool RecoveryVirtualJointLimit::isActive(size_t index) const {
 
 bool RecoveryVirtualJointLimit::anyActive() const {
     return std::any_of(side_.begin(), side_.end(), [](int side) { return side != 0; });
+}
+
+const std::vector<double>& RecoveryVirtualJointLimit::getK() const {
+    return k_;
+}
+
+const std::vector<double>& RecoveryVirtualJointLimit::getD() const {
+    return d_;
+}
+
+const std::vector<int>& RecoveryVirtualJointLimit::getSide() const {
+    return side_;
+}
+
+double RecoveryVirtualJointLimit::getAnchor(size_t index) const {
+    if (!isActive(index)) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return side_[index] > 0 ? q_max_trigger_[index] : q_min_trigger_[index];
 }
 
 bool RecoveryVirtualJointLimit::hasReturnedToAnchor(size_t index, double position, double velocity) const {
