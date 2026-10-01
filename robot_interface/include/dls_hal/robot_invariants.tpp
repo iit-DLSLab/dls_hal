@@ -142,7 +142,8 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     for (size_t i = 0; i < state.position.size(); ++i) {
         double joint_position_threshold_min;
         double joint_position_threshold_max;
-        computePredictedPositionThresholds(i, state.velocity[i], state.torque[i],
+        // Zero-torque passed instead of state.torque[i], recovery overriding the command
+        computePredictedPositionThresholds(i, state.velocity[i], 0.0,
                                            joint_position_threshold_min, joint_position_threshold_max);
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
