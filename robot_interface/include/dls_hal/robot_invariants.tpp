@@ -118,15 +118,17 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
         std::max(std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
     const double tau_net_min = 
         std::max(std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
-    // Braking distance at full available torque, plus the distance covered during the
+    // Stopping distance of the critically damped virtual joint limit whose peak torque
+    // (at the trigger) equals the available torque: 2 * I * v^2 / (e * tau_net), i.e.
+    // 4/e times the full-torque braking distance. Plus the distance covered during the
     // up to one control period between the threshold crossing and its detection.
     const double delta_q_max =
         velocity > 0.0
-        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_max) + velocity * control_period
+        ? 2.0 * limits.joint_inertia[i] * velocity * velocity / (M_E * tau_net_max) + velocity * control_period
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? limits.joint_inertia[i] * velocity * velocity / (2.0 * tau_net_min) - velocity * control_period
+        ? 2.0 * limits.joint_inertia[i] * velocity * velocity / (M_E * tau_net_min) - velocity * control_period
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;

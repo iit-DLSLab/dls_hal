@@ -145,11 +145,21 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
 
     const double tau_push = std::max(toward_sign * torque, 0.0);
 
-    double new_k =
-        (inertia * considered_velocity * considered_velocity)/ (dq_remaining * dq_remaining)
-        + 2.0 * tau_push / dq_remaining;
+    // Critically damped spring-damper anchored at the trigger, d = 2 * sqrt(k * I).
+    // From velocity w the penetration is q(t) - anchor = w * t * exp(-t * sqrt(k / I)),
+    // deepest at t = sqrt(I / k): w * sqrt(I / k) / e. A constant push tau adds at most tau / k.
+    // k is chosen so that the joint stops exactly at the limit:
+    //   w * sqrt(I / k) / e + tau / k = dq  ->  dq * k - (w * sqrt(I) / e) * sqrt(k) - tau = 0
+    // (tau = 0: k = I * w^2 / (e^2 * dq^2)). The peak torque is d * w at the trigger, which the
+    // threshold sizes to the available torque. Stiffer gains would stop it earlier but
+    // demand more torque.
+    const double w_term = considered_velocity * std::sqrt(inertia) / M_E; // w * sqrt(I) / e
+    const double sqrt_k =
+        (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * tau_push))
+        / (2.0 * dq_remaining);
 
-    double new_d = 2.0 * std::sqrt(new_k * inertia);
+    const double new_k = sqrt_k * sqrt_k;
+    const double new_d = 2.0 * std::sqrt(new_k * inertia);
 
     if (!std::isfinite(new_k) || !std::isfinite(new_d) || new_k < 0.0 || new_d < 0.0
         || !std::isfinite(anchor)) {
