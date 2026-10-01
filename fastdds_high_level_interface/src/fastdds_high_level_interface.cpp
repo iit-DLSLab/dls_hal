@@ -14,11 +14,7 @@ FastDDSHLInterface::FastDDSHLInterface(const std::string& ID)
 {}
 
 FastDDSHLInterface::~FastDDSHLInterface(){
-    {
-        std::lock_guard<std::mutex> lock(event_thread_control_mutex_);
-        event_thread_running_ = false;
-    }
-    event_thread_control_cv_.notify_all(); // awake eventLoggingLoop() without waiting for the next period
+    event_thread_.request_stop(); // eventLoggingLoop() exits at most one event period later
     if (event_thread_.joinable())
         event_thread_.join();
 
@@ -114,8 +110,7 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     event_check_period_ = std::chrono::duration<double>(1.0 / events_frequency);
 
     if (!event_thread_.joinable()) {
-        event_thread_running_ = true;
-        event_thread_ = std::thread(&FastDDSHLInterface::eventLoggingLoop, this);
+        event_thread_ = std::jthread([this](std::stop_token stop_token) { eventLoggingLoop(stop_token); });
     }
 }
 
@@ -233,12 +228,12 @@ void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
     robot_interface_queue.push( source );
 }
 
-void FastDDSHLInterface::eventLoggingLoop(){
-    std::unique_lock<std::mutex> control_lock(event_thread_control_mutex_);
-    while (!event_thread_control_cv_.wait_for(
-        control_lock, event_check_period_, [this] { return !event_thread_running_; })) {
-        control_lock.unlock();
-            
+void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
+    const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(event_check_period_);
+    auto next_wakeup = std::chrono::steady_clock::now() + period;
+    std::this_thread::sleep_until(next_wakeup);
+
+    while (!stop_token.stop_requested()) {
         std::vector<GenericRobotInterface> robot_interface_snapshots;
         GenericRobotInterface robot_interface;
         while ( robot_interface_queue.pop(robot_interface) )
@@ -248,7 +243,13 @@ void FastDDSHLInterface::eventLoggingLoop(){
         for(auto ri : robot_interface_snapshots){
             checkEvents(ri);
         }
-        control_lock.lock();
+
+        // Same absolute-deadline sleep as ioLoop().
+        next_wakeup += period;
+        const auto now = std::chrono::steady_clock::now();
+        if (now > next_wakeup)
+            next_wakeup += period * ((now - next_wakeup) / period + 1);
+        std::this_thread::sleep_until(next_wakeup);
     }
 }
 

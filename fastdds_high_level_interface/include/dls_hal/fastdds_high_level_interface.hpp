@@ -11,9 +11,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
-#include <mutex>
 #include <stop_token>
 #include <thread>
 #include <boost/lockfree/spsc_queue.hpp>
@@ -59,7 +57,7 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         void ioLoop(std::stop_token stop_token);
         // Runs on event_thread_, decoupled from the HAL's real-time frequency:
         // processes the event queue and logs events.
-        void eventLoggingLoop();
+        void eventLoggingLoop(std::stop_token stop_token);
 
         void writeIMU(const RobotState& state);
 
@@ -67,10 +65,9 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         // Overridden by robot_interface.events_frequency (source.safety.getEventsFrequency()) in init().
         std::chrono::duration<double> event_check_period_{std::chrono::duration<double>(0.1)};
-        std::thread event_thread_;
-        std::mutex event_thread_control_mutex_;
-        std::condition_variable event_thread_control_cv_;
-        bool event_thread_running_{false};
+        // Stopped and joined explicitly in the destructor: the members below are
+        // destroyed before it, while eventLoggingLoop() may still be using them.
+        std::jthread event_thread_;
         
         // Filled by ioLoop() with the received inputs;
         boost::lockfree::spsc_queue<GenericRobotInterface, boost::lockfree::capacity< 100 > > inputs_queue_;
