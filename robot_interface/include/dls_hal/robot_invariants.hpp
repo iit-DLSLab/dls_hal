@@ -275,6 +275,8 @@ public:
         double events_frequency; // Hz
         // Control loop period, needed for delay compensation
         double control_period; // seconds; 0 disables delay compensation
+        // Below this joint speed the virtual joint limit is not activated.
+        double virtual_joint_limit_min_velocity; // rad/s
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

@@ -32,7 +32,11 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     const auto control_period_node = config["robot_interface"]["safety"]["control_period"];
     control_period = control_period_node ? control_period_node.as<double>() : 0.0;
     if (!std::isfinite(control_period) || control_period < 0.0)
-        control_period = 0.0
+        control_period = 0.0;
+    const auto min_velocity_node = config["robot_interface"]["safety"]["virtual_joint_limit_min_velocity"];
+    virtual_joint_limit_min_velocity = min_velocity_node ? min_velocity_node.as<double>() : 0.3;
+    if (!std::isfinite(virtual_joint_limit_min_velocity) || virtual_joint_limit_min_velocity < 0.0)
+        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_min_velocity must be finite and non-negative (rad/s)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
@@ -141,7 +145,9 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         const bool was_predicted = anomalies.joint_pos_limit_violation_predicted[i];
-        const bool is_predicted = checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
+        // Slow joints do not activate the virtual joint limit, even past the position limits.
+        const bool is_predicted = std::abs(state.velocity[i]) >= virtual_joint_limit_min_velocity
+            && checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
         anomalies.joint_pos_limit_violation_predicted[i] = is_predicted;
         // Per-joint edges: gains and anchor are set once when the prediction rises, and
         // cleared when it falls so a joint no longer predicted gets no stale spring.
