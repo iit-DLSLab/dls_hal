@@ -154,9 +154,10 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         // Per-joint edges: gains and anchor are set once when the prediction rises, and
         // cleared when it falls so a joint no longer predicted gets no stale spring.
         if (is_predicted && !was_predicted) {
+            // Zero-torque passed instead of state.torque[i], recovery overriding the command
             recovery_virtual_joint_limit
                 .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
-                           state.torque[i], joint_position_threshold_min, joint_position_threshold_max);
+                           0.0, joint_position_threshold_min, joint_position_threshold_max);
         } else if (!is_predicted && was_predicted) {
             recovery_virtual_joint_limit.reset(i);
         }
