@@ -27,6 +27,9 @@ PRIVATE
     Threads::Threads
 )
 
+# std::jthread/std::stop_token in the public header
+target_compile_features(fastdds_high_level_interface PUBLIC cxx_std_20)
+
 target_include_directories(fastdds_high_level_interface
 PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
