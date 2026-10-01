@@ -1,4 +1,5 @@
 #include "dls_hal/fastdds_high_level_interface.hpp"
+#include "dls_hal/periodic_sleeper.hpp"
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
 #include <cstdint>
@@ -143,8 +144,7 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
 }
 
 void FastDDSHLInterface::ioLoop(std::stop_token stop_token){
-    const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(io_period_);
-    auto next_wakeup = std::chrono::steady_clock::now();
+    PeriodicSleeper sleeper(io_period_);
 
     while (!stop_token.stop_requested()) {
         readInputs();
@@ -153,14 +153,7 @@ void FastDDSHLInterface::ioLoop(std::stop_token stop_token){
         while (outputs_queue_.pop(latest_output_)){}
         publishOutputs(latest_output_);
 
-        // Sleep until an absolute deadline, so the work time does not add to
-        // the period; skip the expired slots after an overrun instead of
-        // running a burst of catch-up iterations.
-        next_wakeup += period;
-        const auto now = std::chrono::steady_clock::now();
-        if (now > next_wakeup)
-            next_wakeup += period * ((now - next_wakeup) / period + 1);
-        std::this_thread::sleep_until(next_wakeup);
+        sleeper.sleep();
     }
 }
 
@@ -229,9 +222,7 @@ void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
 }
 
 void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
-    const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(event_check_period_);
-    auto next_wakeup = std::chrono::steady_clock::now() + period;
-    std::this_thread::sleep_until(next_wakeup);
+    PeriodicSleeper sleeper(event_check_period_);
 
     while (!stop_token.stop_requested()) {
         std::vector<GenericRobotInterface> robot_interface_snapshots;
@@ -244,12 +235,7 @@ void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
             checkEvents(ri);
         }
 
-        // Same absolute-deadline sleep as ioLoop().
-        next_wakeup += period;
-        const auto now = std::chrono::steady_clock::now();
-        if (now > next_wakeup)
-            next_wakeup += period * ((now - next_wakeup) / period + 1);
-        std::this_thread::sleep_until(next_wakeup);
+        sleeper.sleep();
     }
 }
 
