@@ -37,6 +37,11 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     virtual_joint_limit_min_velocity = min_velocity_node ? min_velocity_node.as<double>() : 0.3;
     if (!std::isfinite(virtual_joint_limit_min_velocity) || virtual_joint_limit_min_velocity < 0.0)
         throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_min_velocity must be finite and non-negative (rad/s)");
+    const auto torque_scale_node = config["robot_interface"]["safety"]["virtual_joint_limit_torque_scale"];
+    virtual_joint_limit_torque_scale = torque_scale_node ? torque_scale_node.as<double>() : 1.0;
+    if (!std::isfinite(virtual_joint_limit_torque_scale) || virtual_joint_limit_torque_scale <= 0.0
+        || virtual_joint_limit_torque_scale > 1.0)
+        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_torque_scale must be in (0, 1]");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
@@ -120,11 +125,13 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     const size_t i = joint_index;
     // Considering controller torque moving towards the limit.
     // Ignore controller braking contribution (torque driving away from limit) for robustness.
+    // Only a fraction of the torque limit is budgeted for braking: the rest is headroom
+    // for model errors (inertia, velocity prediction, external torque).
     constexpr double tau_net_eps = 1e-6; // Denominator regulation term
-    const double tau_net_max = 
-        std::max(std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
-    const double tau_net_min = 
-        std::max(std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
+    const double tau_net_max = std::max(
+        virtual_joint_limit_torque_scale * std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
+    const double tau_net_min = std::max(
+        virtual_joint_limit_torque_scale * std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
     // Stopping distance of the critically damped virtual joint limit whose peak torque
     // (at the trigger) equals the available torque: 2 * I * v^2 / (e * tau_net), i.e.
     // 4/e times the full-torque braking distance. Plus the distance covered during the
