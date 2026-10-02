@@ -1,5 +1,4 @@
 add_library(fastdds_high_level_interface SHARED
-    src/fastdds_high_level_interface.cpp
     src/fastdds_event_checker.cpp
 )
 # add an alias for the library to be used by other packages

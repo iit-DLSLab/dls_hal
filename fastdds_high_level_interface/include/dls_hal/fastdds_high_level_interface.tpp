@@ -1,4 +1,6 @@
-#include "dls_hal/fastdds_high_level_interface.hpp"
+#pragma once
+
+// Included by fastdds_high_level_interface.hpp
 #include "dls_hal/periodic_sleeper.hpp"
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
@@ -10,11 +12,13 @@
 #include <pthread.h>
 #include <sched.h>
 
-FastDDSHLInterface::FastDDSHLInterface(const std::string& ID)
+template <typename RI>
+FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
     : event_checker_(ID)
 {}
 
-FastDDSHLInterface::~FastDDSHLInterface(){
+template <typename RI>
+FastDDSHLInterface<RI>::~FastDDSHLInterface(){
     event_thread_.request_stop(); // eventLoggingLoop() exits at most one event period later
     if (event_thread_.joinable())
         event_thread_.join();
@@ -22,30 +26,33 @@ FastDDSHLInterface::~FastDDSHLInterface(){
     io_thread_.request_stop(); // ioLoop() exits at most one io period later
     if (io_thread_.joinable())
         io_thread_.join();
-};
+}
 
-void FastDDSHLInterface::setEventLogger(dls::logging::AppLogger& logger)
+template <typename RI>
+void FastDDSHLInterface<RI>::setEventLogger(dls::logging::AppLogger& logger)
 {
     event_checker_.setEventLogger(logger);
 }
 
-void FastDDSHLInterface::checkEvents(const GenericRobotInterface& source)
+template <typename RI>
+void FastDDSHLInterface<RI>::checkEvents(const GenericRobotInterface& source)
 {
     event_checker_.check(source);
 }
 
-void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& config){
+template <typename RI>
+void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     // input control signal
-    input_control_signal = transport.buildInput<dls2_interface::msg::ControlSignal>(
+    input_control_signal = this->transport.template buildInput<dls2_interface::msg::ControlSignal>(
     dls::topics::control_signal);
     input_control_signal->setReceivingDataTimeout(std::chrono::duration<double>(source.safety.getReferencesTimeout()));
-    output_blind_state = transport.buildOutput<dls2_interface::msg::BlindState>(
+    output_blind_state = this->transport.template buildOutput<dls2_interface::msg::BlindState>(
     dls::topics::low_level_estimation::blind_state);
-    output_imu = transport.buildOutput<dls2_interface::msg::Imu>(
+    output_imu = this->transport.template buildOutput<dls2_interface::msg::Imu>(
     dls::topics::low_level_estimation::imu);
-    output_battery_status = transport.buildOutput<dls2_interface::msg::BatteryStatus>(
+    output_battery_status = this->transport.template buildOutput<dls2_interface::msg::BatteryStatus>(
     dls::topics::battery_status);
-    output_hal_commands_feedback = transport.buildOutput<dls2_interface::msg::ControlSignal>(
+    output_hal_commands_feedback = this->transport.template buildOutput<dls2_interface::msg::ControlSignal>(
     dls::topics::hal_commands_feedback);
 
     // init inputs
@@ -96,11 +103,13 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
     }
 }
 
-bool FastDDSHLInterface::check(){
-    return transport.areInputsReceivingData() && transport.areOutputsUnique();
+template <typename RI>
+bool FastDDSHLInterface<RI>::check(){
+    return this->transport.areInputsReceivingData() && this->transport.areOutputsUnique();
 }
 
-void FastDDSHLInterface::read(GenericRobotInterface& source){
+template <typename RI>
+void FastDDSHLInterface<RI>::read(RI& source){
     // Only the newest reference matters: drain the queue and keep the last one.
     // If nothing arrived since the previous cycle, source keeps its reference.
     bool received = false;
@@ -119,12 +128,14 @@ void FastDDSHLInterface::read(GenericRobotInterface& source){
     source.ref.control_mode = latest_input_.ref.control_mode;
 }
 
-void FastDDSHLInterface::write(const GenericRobotInterface& source){
+template <typename RI>
+void FastDDSHLInterface<RI>::write(const RI& source){
     // Non-blocking: if ioLoop() falls behind and the queue is full, the sample is dropped.
     outputs_queue_.push(source);
 }
 
-void FastDDSHLInterface::ioLoop(std::stop_token stop_token){
+template <typename RI>
+void FastDDSHLInterface<RI>::ioLoop(std::stop_token stop_token){
     PeriodicSleeper sleeper(io_period_);
 
     while (!stop_token.stop_requested()) {
@@ -138,12 +149,13 @@ void FastDDSHLInterface::ioLoop(std::stop_token stop_token){
     }
 }
 
-void FastDDSHLInterface::readInputs(){
-    transport.read();
+template <typename RI>
+void FastDDSHLInterface<RI>::readInputs(){
+    this->transport.read();
 
     // Setting the lost-references flag
     current_input_.safety.setLostReferences(
-        input_control_signal->hasStartedReceivingData() && !transport.areInputsReceivingData());
+        input_control_signal->hasStartedReceivingData() && !this->transport.areInputsReceivingData());
     current_input_.ref.position = input_control_signal->msg.joints_position();
     current_input_.ref.velocity = input_control_signal->msg.joints_velocity();
     current_input_.ref.torque = input_control_signal->msg.joints_torques();
@@ -156,7 +168,8 @@ void FastDDSHLInterface::readInputs(){
     inputs_queue_.push(current_input_);
 }
 
-void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
+template <typename RI>
+void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     const auto& state = source.state;
     // fill in blind state
     output_blind_state->msg.joints_position() = state.position;
@@ -203,21 +216,23 @@ void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
     output_hal_commands_feedback->publish();
 }
 
-void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
+template <typename RI>
+void FastDDSHLInterface<RI>::writeEvents(const RI& source){
     events_queue_.push( source );
 }
 
-void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
+template <typename RI>
+void FastDDSHLInterface<RI>::eventLoggingLoop(std::stop_token stop_token){
     PeriodicSleeper sleeper(event_check_period_);
 
     while (!stop_token.stop_requested()) {
-        std::vector<GenericRobotInterface> robot_interface_snapshots;
-        GenericRobotInterface robot_interface;
+        std::vector<RI> robot_interface_snapshots;
+        RI robot_interface;
         while ( events_queue_.pop(robot_interface) )
             robot_interface_snapshots.push_back(robot_interface);
 
         // check for anomalies
-        for(auto ri : robot_interface_snapshots){
+        for(const auto& ri : robot_interface_snapshots){
             checkEvents(ri);
         }
 

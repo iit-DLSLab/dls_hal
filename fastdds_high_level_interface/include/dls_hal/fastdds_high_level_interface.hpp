@@ -14,22 +14,30 @@
 #include <cstdint>
 #include <stop_token>
 #include <thread>
+#include <type_traits>
 #include <boost/lockfree/spsc_queue.hpp>
 
 
-class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, FastDDSTransport> {
+// RI is the robot interface type the HAL runs on. Robot-specific interfaces
+// derived from GenericRobotInterface (e.g. carrying extra data) instantiate this
+// with their own type, so the snapshots exchanged with the io thread keep that
+// extra data instead of being sliced to GenericRobotInterface.
+template <typename RI = GenericRobotInterface>
+class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
+    static_assert(std::is_base_of_v<GenericRobotInterface, RI>,
+                  "FastDDSHLInterface: Robot Interface must derive from GenericRobotInterface");
     public:
         explicit FastDDSHLInterface(const std::string& ID = "FastDDSHLInterface");
         ~FastDDSHLInterface();
 
-        void init(GenericRobotInterface& source, const YAML::Node& config) override;
+        void init(RI& source, const YAML::Node& config) override;
 
         // Fill the robot interface with the latest inputs information from the io thread
-        void read(GenericRobotInterface& source) override;
+        void read(RI& source) override;
         // Communicate the robot interface state to the io thread, which will publish it to the high-level nodes
-        void write(const GenericRobotInterface& source) override;
+        void write(const RI& source) override;
         // Communicate the robot interface events to the io thread, which will publish them to the high-level nodes
-        void writeEvents(const GenericRobotInterface& source) override;
+        void writeEvents(const RI& source) override;
 
         bool check() override;
 
@@ -46,10 +54,14 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         dls::WriterPtr<dls2_interface::msg::BatteryStatus> output_battery_status;
         dls::WriterPtr<dls2_interface::msg::ControlSignal> output_hal_commands_feedback;
     protected:
-        // Publish the outputs through the fastdds transport
-        virtual void publishOutputs(const GenericRobotInterface& source);
-        // Read the latest inputs from the fastdds transport
+        // Publish the outputs through the fastdds transport. Runs on the io thread.
+        virtual void publishOutputs(const RI& source);
+        // Read the latest inputs from the fastdds transport into current_input_. Runs on the io thread.
         virtual void readInputs();
+
+        //! Filled by readInputs() with the received reference; copied from the source
+        // in init() so its vectors already have the robot's sizes.
+        RI current_input_;
     private:
 
         //! Input/output thread
@@ -61,9 +73,9 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
         */
         void ioLoop(std::stop_token stop_token);
         // Filled by ioLoop() with the received inputs;
-        boost::lockfree::spsc_queue<GenericRobotInterface, boost::lockfree::capacity< 100 > > inputs_queue_;
+        boost::lockfree::spsc_queue<RI, boost::lockfree::capacity< 100 > > inputs_queue_;
         // Filled by ioLoop() with the received outputs from the HAL;
-        boost::lockfree::spsc_queue<GenericRobotInterface, boost::lockfree::capacity< 100 > > outputs_queue_;
+        boost::lockfree::spsc_queue<RI, boost::lockfree::capacity< 100 > > outputs_queue_;
 
         //! Event logging thread, decoupled from the HAL's real-time frequency
         std::jthread event_thread_;
@@ -75,18 +87,17 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
          */
         void eventLoggingLoop(std::stop_token stop_token);
         //! Filled by writeEvents() with the received events from the HAL;
-        boost::lockfree::spsc_queue<GenericRobotInterface, boost::lockfree::capacity< 2000 > > events_queue_;
+        boost::lockfree::spsc_queue<RI, boost::lockfree::capacity< 2000 > > events_queue_;
 
-        //! Filled by ioLoop() with the received reference; copied from the source
-        // in init() so its vectors already have the robot's sizes.
-        GenericRobotInterface current_input_;
         //! Last input popped by read(), reused to avoid reallocating each cycle.
-        GenericRobotInterface latest_input_;
+        RI latest_input_;
         //! Last output popped by ioLoop() and published, reused to avoid reallocating
         // each cycle; copied from the source in init() so it is valid before the
         // first write().
-        GenericRobotInterface latest_output_;
+        RI latest_output_;
 
         //! Event checker for anomalies and safety events
         FastDDSEventChecker event_checker_;
 };
+
+#include "dls_hal/fastdds_high_level_interface.tpp"
