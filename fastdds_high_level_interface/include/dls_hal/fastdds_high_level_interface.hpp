@@ -89,7 +89,4 @@ class FastDDSHLInterface : public TransportInterface<GenericRobotInterface, Fast
 
         //! Event checker for anomalies and safety events
         FastDDSEventChecker event_checker_;
-
-        //! Fill the output IMU message with the robot interface's IMU state
-        void writeIMU(const RobotState& state);
 };

@@ -141,11 +141,7 @@ void FastDDSHLInterface::ioLoop(std::stop_token stop_token){
 void FastDDSHLInterface::readInputs(){
     transport.read();
 
-    // Checked every cycle so missing required inputs select damping recovery.
-    // Once triggered the anomaly latches; resumed messages do not clear it.
-    // A startup grace period is required: until the control signal has
-    // arrived at least once, its absence is not yet a lost reference, only
-    // a controller that has not activated/connected yet.
+    // Setting the lost-references flag
     current_input_.safety.setLostReferences(
         input_control_signal->hasStartedReceivingData() && !transport.areInputsReceivingData());
     current_input_.ref.position = input_control_signal->msg.joints_position();
@@ -162,7 +158,7 @@ void FastDDSHLInterface::readInputs(){
 
 void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
     const auto& state = source.state;
-    // mapping blind state to source state
+    // fill in blind state
     output_blind_state->msg.joints_position() = state.position;
     output_blind_state->msg.joints_velocity() = state.velocity;
     output_blind_state->msg.joints_acceleration() = state.acceleration;
@@ -171,7 +167,18 @@ void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
     output_blind_state->msg.feet_contact() = state.contacts;
     output_blind_state->msg.motors_current() = state.motors_current;
     output_blind_state->msg.motors_status_word() = state.motors_status_word;
-    // publish battery status
+    // fill in imu state
+    for(size_t i = 0; i < state.imu.size(); ++i){
+        output_imu->msg.frame_id() = state.imu[i].frame_id;
+        output_imu->msg.orientation() = state.imu[i].orientation;
+        output_imu->msg.orientation_rpy() = state.imu[i].orientation_rpy;
+        output_imu->msg.orientation_covariance() = state.imu[i].orientation_covariance;
+        output_imu->msg.angular_velocity() = state.imu[i].angular_velocity;
+        output_imu->msg.angular_velocity_covariance() = state.imu[i].angular_velocity_covariance;
+        output_imu->msg.linear_acceleration() = state.imu[i].linear_acceleration;
+        output_imu->msg.linear_acceleration_covariance() = state.imu[i].linear_acceleration_covariance;
+    }
+    // fill in battery state
     for (size_t i = 0; i < state.battery.size(); ++i) {
         output_battery_status->msg.id() = state.battery[i].id;
         output_battery_status->msg.voltage() = state.battery[i].v_batt;
@@ -180,8 +187,7 @@ void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
         output_battery_status->msg.status() = state.battery[i].status;
         output_battery_status->msg.fault() = state.battery[i].fault;
     }
-
-    // publish hal control signal feedback
+    // fill in hal commands feedback
     output_hal_commands_feedback->msg.control_mode() = static_cast<std::uint8_t>(source.low_level_control.control_mode);
     output_hal_commands_feedback->msg.joints_position() = source.low_level_control.commands.position;
     output_hal_commands_feedback->msg.joints_velocity() = source.low_level_control.commands.velocity;
@@ -216,18 +222,5 @@ void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
         }
 
         sleeper.sleep();
-    }
-}
-
-void FastDDSHLInterface::writeIMU(const RobotState& state){
-    for(size_t i = 0; i < state.imu.size(); ++i){
-        output_imu->msg.frame_id() = state.imu[i].frame_id;
-        output_imu->msg.orientation() = state.imu[i].orientation;
-        output_imu->msg.orientation_rpy() = state.imu[i].orientation_rpy;
-        output_imu->msg.orientation_covariance() = state.imu[i].orientation_covariance;
-        output_imu->msg.angular_velocity() = state.imu[i].angular_velocity;
-        output_imu->msg.angular_velocity_covariance() = state.imu[i].angular_velocity_covariance;
-        output_imu->msg.linear_acceleration() = state.imu[i].linear_acceleration;
-        output_imu->msg.linear_acceleration_covariance() = state.imu[i].linear_acceleration_covariance;
     }
 }
