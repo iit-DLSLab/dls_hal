@@ -183,6 +183,14 @@ public:
     bool breaking_mechanics{false};
 };
 
+enum class CONTROL_MODE{
+    TORQUE_CONTROL=0,
+    IMPEDANCE_CONTROL,
+    POSITION_CONTROL,
+    VELOCITY_CONTROL,
+    CURRENT_CONTROL
+};
+
 template <typename TState, typename TRef, typename TCommands, typename TLimits>
 class RobotSafety{
 public:
@@ -254,14 +262,6 @@ public:
         // Recovery procedures
         RecoveryESTOP recovery_estop;
         RecoveryDamping recovery_damping;
-};
-
-enum class CONTROL_MODE{
-    TORQUE_CONTROL=0,
-    IMPEDANCE_CONTROL,
-    POSITION_CONTROL,
-    VELOCITY_CONTROL,
-    CURRENT_CONTROL
 };
 
 template <typename TState, typename TRef, typename TCommands>
