@@ -74,33 +74,14 @@ void FastDDSHLInterface::init(GenericRobotInterface& source, const YAML::Node& c
             throw std::invalid_argument("FastDDSHLInterface: io_frequency must be positive");
         io_period_ = std::chrono::duration<double>(1.0 / io_frequency);
     }
-    if (config["io_sched_priority"]) {
-        io_sched_priority_ = config["io_sched_priority"].as<int>();
-        if (io_sched_priority_ < 0 || io_sched_priority_ > sched_get_priority_max(SCHED_FIFO))
-            throw std::invalid_argument("FastDDSHLInterface: io_sched_priority must be in [0, "
-                + std::to_string(sched_get_priority_max(SCHED_FIFO)) + "]");
-    }
 
     if (!io_thread_.joinable()) {
         // Must be initialized before the io thread starts filling it: copying
         // the source gives its reference vectors the robot's sizes.
-        input_robot_interface_ = source;
+        current_input_ = source;
         latest_output_ = source;
         std::cout << "Starting ioLoop HAL thread with period " << io_period_.count() << " seconds" << std::endl;
         io_thread_ = std::jthread([this](std::stop_token stop_token) { ioLoop(stop_token); });
-
-        // init() runs before the HAL's PeriodicApp switches its own thread to
-        // SCHED_FIFO, and that switch applies to the calling thread only: without
-        // this the io thread stays SCHED_OTHER and its wake-ups get delayed by
-        // every other process on the machine.
-        if (io_sched_priority_ > 0) {
-            sched_param param{};
-            param.sched_priority = io_sched_priority_;
-            const int ret = pthread_setschedparam(io_thread_.native_handle(), SCHED_FIFO, &param);
-            if (ret != 0)
-                std::cerr << "FastDDSHLInterface: could not set SCHED_FIFO priority "
-                          << io_sched_priority_ << " on the io thread: " << std::strerror(ret) << std::endl;
-        }
     }
 
     // Event checking/logging runs in its own thread, decoupled from the HAL's
@@ -165,18 +146,18 @@ void FastDDSHLInterface::readInputs(){
     // A startup grace period is required: until the control signal has
     // arrived at least once, its absence is not yet a lost reference, only
     // a controller that has not activated/connected yet.
-    input_robot_interface_.safety.setLostReferences(
+    current_input_.safety.setLostReferences(
         input_control_signal->hasStartedReceivingData() && !transport.areInputsReceivingData());
-    input_robot_interface_.ref.position = input_control_signal->msg.joints_position();
-    input_robot_interface_.ref.velocity = input_control_signal->msg.joints_velocity();
-    input_robot_interface_.ref.torque = input_control_signal->msg.joints_torques();
-    input_robot_interface_.ref.kp = input_control_signal->msg.kp();
-    input_robot_interface_.ref.kd = input_control_signal->msg.kd();
-    input_robot_interface_.ref.control_mode = input_control_signal->msg.control_mode();
+    current_input_.ref.position = input_control_signal->msg.joints_position();
+    current_input_.ref.velocity = input_control_signal->msg.joints_velocity();
+    current_input_.ref.torque = input_control_signal->msg.joints_torques();
+    current_input_.ref.kp = input_control_signal->msg.kp();
+    current_input_.ref.kd = input_control_signal->msg.kd();
+    current_input_.ref.control_mode = input_control_signal->msg.control_mode();
 
     // Non-blocking: if read() is not being called and the queue is full, the
     // reference is dropped; read() catches up on the next pushed one.
-    inputs_queue_.push(input_robot_interface_);
+    inputs_queue_.push(current_input_);
 }
 
 void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
@@ -190,7 +171,6 @@ void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
     output_blind_state->msg.feet_contact() = state.contacts;
     output_blind_state->msg.motors_current() = state.motors_current;
     output_blind_state->msg.motors_status_word() = state.motors_status_word;
-    writeIMU(state);
     // publish battery status
     for (size_t i = 0; i < state.battery.size(); ++i) {
         output_battery_status->msg.id() = state.battery[i].id;
@@ -218,7 +198,7 @@ void FastDDSHLInterface::publishOutputs(const GenericRobotInterface& source){
 }
 
 void FastDDSHLInterface::writeEvents(const GenericRobotInterface& source){
-    robot_interface_queue.push( source );
+    events_queue_.push( source );
 }
 
 void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
@@ -227,7 +207,7 @@ void FastDDSHLInterface::eventLoggingLoop(std::stop_token stop_token){
     while (!stop_token.stop_requested()) {
         std::vector<GenericRobotInterface> robot_interface_snapshots;
         GenericRobotInterface robot_interface;
-        while ( robot_interface_queue.pop(robot_interface) )
+        while ( events_queue_.pop(robot_interface) )
             robot_interface_snapshots.push_back(robot_interface);
 
         // check for anomalies
