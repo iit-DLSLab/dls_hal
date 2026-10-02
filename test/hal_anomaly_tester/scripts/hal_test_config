@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Switch the installed robot interface config between production and a HAL
+anomaly test suite (see dls_hal/test/hal_anomaly_tester/README.md).
+
+    hal_test_config status
+    hal_test_config enable <suite>     # base, position_mode or velocity_mode
+    hal_test_config disable            # restore the production config
+
+`enable` merges <root>/test/interface_config_test_<suite>.yaml onto the
+production config and installs the result as <root>/interface_config.yaml,
+which is the file both gazebo_sim and pegasus_hal load. In the override file a
+mapping with integer keys patches those indices of a list. The production
+config is kept in <root>/interface_config.production.yaml until `disable`.
+Restart the HAL after switching.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import os
+import shutil
+import sys
+import tempfile
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover
+    sys.exit("hal_test_config: PyYAML is required (apt install python3-yaml)")
+
+ACTIVE = "interface_config.yaml"
+BACKUP = "interface_config.production.yaml"
+
+
+def merge(base, override, path="config"):
+    """Deep merge; {index: value} patches a list, anything else replaces."""
+    if isinstance(override, dict) and isinstance(base, list) and override \
+            and all(isinstance(k, int) for k in override):
+        patched = list(base)
+        for index, value in override.items():
+            if not 0 <= index < len(patched):
+                raise ValueError(f"{path}[{index}] out of range (length {len(patched)})")
+            patched[index] = value
+        return patched
+    if isinstance(override, dict) and isinstance(base, dict):
+        merged = dict(base)
+        for key, value in override.items():
+            merged[key] = merge(base[key], value, f"{path}.{key}") if key in base else value
+        return merged
+    return copy.deepcopy(override)
+
+
+def load(path):
+    with open(path, encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
+
+
+def write_atomic(path, text):
+    directory = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".interface_config.")
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        file.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def suite_of(config):
+    return config.get("test_config") if isinstance(config, dict) else None
+
+
+def available_suites(root):
+    test_dir = os.path.join(root, "test")
+    prefix, suffix = "interface_config_test_", ".yaml"
+    if not os.path.isdir(test_dir):
+        return []
+    return sorted(f[len(prefix):-len(suffix)] for f in os.listdir(test_dir)
+                  if f.startswith(prefix) and f.endswith(suffix))
+
+
+def enable(root, suite):
+    active_path, backup_path = os.path.join(root, ACTIVE), os.path.join(root, BACKUP)
+    override_path = os.path.join(root, "test", f"interface_config_test_{suite}.yaml")
+    if not os.path.isfile(override_path):
+        raise SystemExit(f"unknown suite '{suite}' (available: {', '.join(available_suites(root)) or '-'})")
+    active = load(active_path)
+    if suite_of(active) is None:
+        # The installed file is production (also after a reinstall): back it up.
+        shutil.copyfile(active_path, backup_path)
+        production = active
+    elif os.path.isfile(backup_path):
+        production = load(backup_path)
+    else:
+        raise SystemExit(f"{active_path} is a test config and {backup_path} is missing: "
+                         "reinstall the robot description to restore production")
+    override = load(override_path)
+    if suite_of(override) != suite:
+        raise SystemExit(f"{override_path} must contain 'test_config: {suite}'")
+    merged = merge(production, override)
+    header = (f"# GENERATED TEST CONFIG - HAL anomaly tests, suite '{suite}'. NOT FOR NORMAL OPERATION.\n"
+              f"# {os.path.basename(override_path)} merged onto {BACKUP}.\n"
+              f"# Restore production with: hal_test_config disable\n")
+    write_atomic(active_path, header + yaml.safe_dump(merged, sort_keys=False, default_flow_style=None, width=1000))
+    print(f"enabled test suite '{suite}' in {active_path}: restart the HAL")
+
+
+def disable(root):
+    active_path, backup_path = os.path.join(root, ACTIVE), os.path.join(root, BACKUP)
+    if suite_of(load(active_path)) is None:
+        print(f"{active_path} is already the production config")
+        if os.path.isfile(backup_path):
+            os.remove(backup_path)
+        return
+    if not os.path.isfile(backup_path):
+        raise SystemExit(f"{backup_path} missing: reinstall the robot description to restore production")
+    os.replace(backup_path, active_path)
+    print(f"restored the production config in {active_path}: restart the HAL")
+
+
+def status(root):
+    suite = suite_of(load(os.path.join(root, ACTIVE)))
+    print(f"active: {'test suite ' + repr(suite) if suite else 'production'}")
+    print(f"available suites: {', '.join(available_suites(root)) or '-'}")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--robot", default="pegasus", help="robot description name (default: pegasus)")
+    parser.add_argument("--root", help="config directory (default: /usr/include/<robot>-description)")
+    sub = parser.add_subparsers(dest="action", required=True)
+    sub.add_parser("status")
+    sub.add_parser("enable").add_argument("suite")
+    sub.add_parser("disable")
+    args = parser.parse_args(argv)
+    root = args.root or f"/usr/include/{args.robot}-description"
+    try:
+        if args.action == "enable":
+            enable(root, args.suite)
+        elif args.action == "disable":
+            disable(root)
+        else:
+            status(root)
+    except PermissionError as error:
+        raise SystemExit(f"{error}: run with sudo") from None
+    except ValueError as error:
+        raise SystemExit(f"invalid override: {error}") from None
+
+
+if __name__ == "__main__":
+    main()

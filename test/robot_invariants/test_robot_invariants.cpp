@@ -20,6 +20,10 @@ namespace
 
 using Safety = RobotSafety<RobotState, RobotRef, RobotCommands, RobotLimits>;
 using SafetyState = Safety::SafetyState;
+// Control mode of the fixture config (mode: 1), used by the safety-state tests.
+constexpr CONTROL_MODE kMode = CONTROL_MODE::IMPEDANCE_CONTROL;
+constexpr CONTROL_MODE kCheckedModes[] = {
+    CONTROL_MODE::POSITION_CONTROL, CONTROL_MODE::VELOCITY_CONTROL, CONTROL_MODE::IMPEDANCE_CONTROL};
 
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
@@ -155,8 +159,10 @@ protected:
 TEST_F(RobotSafetyTest, NominalStateAndCommandsRaiseNoAnomaly)
 {
     safety.checkState(state);
-    safety.checkCommands(commands);
-    expectNoAnomaly();
+    for (const auto mode : kCheckedModes) {
+        safety.checkCommands(commands, mode);
+        expectNoAnomaly();
+    }
 }
 
 TEST_F(RobotSafetyTest, ValuesExactlyOnTheLimitsAreNotAnomalies)
@@ -172,8 +178,10 @@ TEST_F(RobotSafetyTest, ValuesExactlyOnTheLimitsAreNotAnomalies)
     commands.torque = {40.0, -50.0, 60.0};
 
     safety.checkState(state);
-    safety.checkCommands(commands);
-    expectNoAnomaly();
+    for (const auto mode : kCheckedModes) {
+        safety.checkCommands(commands, mode);
+        expectNoAnomaly();
+    }
 }
 
 // --- Measured-state limits --------------------------------------------------
@@ -477,7 +485,7 @@ TEST_F(RobotSafetyTest, breaking_mechanics_ClearsButKeepsFirstTriggerTorque)
 TEST_F(RobotSafetyTest, joint_pos_clamping_anomaly)
 {
     commands.position = {-1.5, 0.0, 3.5};  // below min, nominal, above max
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::POSITION_CONTROL);
 
     EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "101");
     EXPECT_DOUBLE_EQ(commands.position[0], -1.0) << "clamped to min";
@@ -488,14 +496,14 @@ TEST_F(RobotSafetyTest, joint_pos_clamping_anomaly)
     EXPECT_FALSE(safety.isEmergencyStopActive()) << "clamping alone is not an e-stop";
 
     setNominal();
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::POSITION_CONTROL);
     EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000");
 }
 
 TEST_F(RobotSafetyTest, joint_vel_clamping_anomaly)
 {
     commands.velocity = {0.0, -25.0, 35.0};
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::VELOCITY_CONTROL);
 
     EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "011");
     EXPECT_DOUBLE_EQ(commands.velocity[1], -20.0);
@@ -505,14 +513,14 @@ TEST_F(RobotSafetyTest, joint_vel_clamping_anomaly)
     EXPECT_FALSE(safety.isEmergencyStopActive());
 
     setNominal();
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::VELOCITY_CONTROL);
     EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "000");
 }
 
 TEST_F(RobotSafetyTest, joint_torque_clamping_anomaly)
 {
     commands.torque = {100.0, 0.0, -70.0};
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::IMPEDANCE_CONTROL);
 
     EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "101");
     EXPECT_DOUBLE_EQ(commands.torque[0], 40.0);
@@ -522,8 +530,63 @@ TEST_F(RobotSafetyTest, joint_torque_clamping_anomaly)
     EXPECT_FALSE(safety.isEmergencyStopActive());
 
     setNominal();
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, CONTROL_MODE::IMPEDANCE_CONTROL);
     EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "000");
+}
+
+TEST_F(RobotSafetyTest, OnlyTheCommandOfTheControlModeIsChecked)
+{
+    // Impedance mode sends torques only: position and velocity commands are
+    // not computed, so they are not checked (and not clamped).
+    commands.position = {-1.5, kNaN, 3.5};
+    commands.velocity = {kInf, -25.0, 0.0};
+    commands.torque = {100.0, 0.0, 0.0};
+    safety.checkCommands(commands, CONTROL_MODE::IMPEDANCE_CONTROL);
+
+    EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "100");
+    EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000");
+    EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "000");
+    EXPECT_EQ(bits(anomalies().nan_position_command_detected), "000");
+    EXPECT_EQ(bits(anomalies().inf_velocity_command_detected), "000");
+    EXPECT_FALSE(safety.isEmergencyStopActive());
+    EXPECT_DOUBLE_EQ(commands.position[0], -1.5) << "unchecked commands are left as they are";
+}
+
+TEST_F(RobotSafetyTest, FlagsOfUncheckedCommandsAreCleared)
+{
+    commands.position = {-1.5, 0.0, 0.0};
+    safety.checkCommands(commands, CONTROL_MODE::POSITION_CONTROL);
+    ASSERT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "100");
+
+    commands.position = {-1.5, 0.0, 0.0};
+    safety.checkCommands(commands, CONTROL_MODE::IMPEDANCE_CONTROL);
+    EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000");
+}
+
+TEST_F(RobotSafetyTest, UnknownControlModeChecksEveryCommand)
+{
+    commands.position = {-1.5, 0.0, 0.0};
+    commands.velocity = {0.0, -25.0, 0.0};
+    commands.torque = {0.0, 0.0, -70.0};
+    safety.checkCommands(commands, CONTROL_MODE::CURRENT_CONTROL);
+    EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "100");
+    EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "010");
+    EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "001");
+}
+
+// Regression: in impedance mode the recovery modes zero the (unused) position
+// commands, and a joint whose range excludes 0, like a knee, was reported as
+// clamped on every cycle of EMERGENCY_STOP/DAMPING.
+TEST_F(RobotSafetyTest, RecoveryZeroesRaiseNoClampingInImpedanceMode)
+{
+    safety.limits.position_min[2] = -3.0;
+    safety.limits.position_max[2] = -1.0;  // knee-like range, excludes 0
+    safety.triggerEmergencyStop();
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        safety.manageAnomalies(state, commands, CONTROL_MODE::IMPEDANCE_CONTROL);
+        EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000") << "cycle " << cycle;
+    }
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
 }
 
 // --- Command NaN / Inf (each one latches the emergency stop) ----------------
@@ -535,8 +598,11 @@ protected:
                               std::vector<bool> RobotAnomalies::*flag,
                               size_t joint, double value)
     {
+        const CONTROL_MODE mode = command == &RobotCommands::position ? CONTROL_MODE::POSITION_CONTROL
+                                : command == &RobotCommands::velocity ? CONTROL_MODE::VELOCITY_CONTROL
+                                : CONTROL_MODE::IMPEDANCE_CONTROL;
         (commands.*command)[joint] = value;
-        safety.checkCommands(commands);
+        safety.checkCommands(commands, mode);
 
         std::string expected(3, '0');
         expected[joint] = '1';
@@ -549,7 +615,7 @@ protected:
 
         // The flag clears with a valid command; the e-stop stays latched.
         setNominal();
-        safety.checkCommands(commands);
+        safety.checkCommands(commands, mode);
         EXPECT_EQ(bits(safety.anomalies.*flag), "000");
         EXPECT_TRUE(safety.isEmergencyStopActive());
     }
@@ -595,7 +661,7 @@ TEST_F(RobotSafetyTest, emergency_stop_triggered)
 
     // One-way latch: nominal cycles do not release it.
     safety.checkState(state);
-    safety.checkCommands(commands);
+    safety.checkCommands(commands, kMode);
     EXPECT_TRUE(safety.isEmergencyStopActive());
 }
 
@@ -612,7 +678,7 @@ TEST_F(RobotSafetyTest, lost_references)
 TEST_F(RobotSafetyTest, SafetyState_NominalLeavesCommandsUntouched)
 {
     const auto expected = commands.torque;
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::NOMINAL);
     EXPECT_EQ(commands.torque, expected);
 }
@@ -620,7 +686,7 @@ TEST_F(RobotSafetyTest, SafetyState_NominalLeavesCommandsUntouched)
 TEST_F(RobotSafetyTest, SafetyState_FungoEntersEmergencyStopAndZeroesCommands)
 {
     state.motors_status_word[0] = kFungoStatusWord;
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
     EXPECT_EQ(commands.position, std::vector<double>(3, 0.0));
     EXPECT_EQ(commands.velocity, std::vector<double>(3, 0.0));
@@ -630,7 +696,7 @@ TEST_F(RobotSafetyTest, SafetyState_FungoEntersEmergencyStopAndZeroesCommands)
 TEST_F(RobotSafetyTest, SafetyState_InvalidCommandEntersEmergencyStopAndZeroesCommands)
 {
     commands.torque[1] = kNaN;
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
     EXPECT_EQ(commands.torque, std::vector<double>(3, 0.0)) << "NaN must not reach the hardware";
 }
@@ -638,7 +704,7 @@ TEST_F(RobotSafetyTest, SafetyState_InvalidCommandEntersEmergencyStopAndZeroesCo
 TEST_F(RobotSafetyTest, SafetyState_LostReferencesEntersDamping)
 {
     safety.setLostReferences(true);
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
     // Default damping gain is 1: torque = -velocity, position/velocity zeroed.
     EXPECT_EQ(commands.torque, (std::vector<double>{-1.0, -2.0, -3.0}));
@@ -651,9 +717,9 @@ TEST_F(RobotSafetyTest, SafetyState_BreakingMechanicsEntersDamping)
     enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
     state.position[1] = 2.5;
     state.torque[1] = 45.0;
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     ASSERT_TRUE(anomalies().breaking_mechanics);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
 }
@@ -662,18 +728,18 @@ TEST_F(RobotSafetyTest, SafetyState_EmergencyStopHasPriorityOverDamping)
 {
     safety.setLostReferences(true);
     safety.triggerEmergencyStop();
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
 }
 
 TEST_F(RobotSafetyTest, SafetyState_DampingEscalatesToEmergencyStop)
 {
     safety.setLostReferences(true);
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     ASSERT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
 
     safety.triggerEmergencyStop();
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
 }
 
@@ -683,12 +749,12 @@ TEST_F(RobotSafetyTest, SafetyState_DampingEscalatesToEmergencyStop)
 TEST_F(RobotSafetyTest, SafetyState_IsLatchedAfterAnomalyClears)
 {
     safety.setLostReferences(true);
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     ASSERT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
 
     safety.setLostReferences(false);
     setNominal();
-    safety.manageAnomalies(state, commands);
+    safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
 }
 

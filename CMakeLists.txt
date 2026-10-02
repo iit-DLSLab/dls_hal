@@ -28,6 +28,7 @@ if(DLS_HAL_BUILD_TESTS)
   enable_testing()
   add_subdirectory(test/robot_invariants)
 endif()
+add_subdirectory(test/hal_anomaly_tester)
 
 if(DLS_HAL_BUILD_PYTHON_BINDINGS)
   add_subdirectory(python)
