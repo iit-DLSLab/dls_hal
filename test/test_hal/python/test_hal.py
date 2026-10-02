@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from threading import Lock
 
 import numpy as np
 
@@ -28,6 +29,9 @@ class TestHalApp(PeriodicAppPlugin):
         self._trajectory_start_ns: int | None = None
         self._initial_joint_position: np.ndarray | None = None
         self._sequence_id = 0
+        self._gains_lock = Lock()
+        self._kp = np.full(self.JOINT_COUNT, self.KP, dtype=float)
+        self._kd = np.full(self.JOINT_COUNT, self.KD, dtype=float)
 
         # Example:
         self.reader_example = self.build_input(
@@ -43,6 +47,19 @@ class TestHalApp(PeriodicAppPlugin):
             ControlSignal.ControlSignal(),
         )
         self.writer_example.data.control_mode(1)
+
+        self.add_command(
+            "set_gains",
+            "Set all joint gains: <kp> <kd>",
+            self._set_gains,
+            enabled=True,
+        )
+        self.add_command(
+            "set_joint_gain",
+            "Set one joint's gains: <joint_index> <kp> <kd>",
+            self._set_joint_gain,
+            enabled=True,
+        )
     # commenting to use default activation check from PeriodicAppPlugin
     # def check_activation(self) -> bool:
     #     return True
@@ -82,9 +99,11 @@ class TestHalApp(PeriodicAppPlugin):
         self._sequence_id += 1
         msg.joints_position(self._as_double_vector(position))
         msg.joints_velocity(self._as_double_vector(velocity))
-        # set gains
-        msg.kp(self._as_double_vector(np.full(self.JOINT_COUNT, self.KP)))
-        msg.kd(self._as_double_vector(np.full(self.JOINT_COUNT, self.KD)))
+        with self._gains_lock:
+            kp = self._kp.copy()
+            kd = self._kd.copy()
+        msg.kp(self._as_double_vector(kp))
+        msg.kd(self._as_double_vector(kd))
 
         self.writer_example.write()
 
@@ -120,12 +139,73 @@ class TestHalApp(PeriodicAppPlugin):
             vector.push_back(float(value))
         return vector
 
+    def _set_gains(self, kp_value: str, kd_value: str) -> bool:
+        """Set proportional and derivative gains for every joint."""
+        gains = self._parse_gains(kp_value, kd_value)
+        if gains is None:
+            print(f"[{APP_ID}] usage: set_gains <kp> <kd>")
+            return False
+
+        kp, kd = gains
+        with self._gains_lock:
+            self._kp.fill(kp)
+            self._kd.fill(kd)
+        print(f"[{APP_ID}] set all gains: kp={kp}, kd={kd}")
+        return True
+
+    def _set_joint_gain(
+        self,
+        joint_index_value: str,
+        kp_value: str,
+        kd_value: str,
+    ) -> bool:
+        """Set proportional and derivative gains for one zero-indexed joint."""
+        try:
+            joint_index = int(joint_index_value)
+        except ValueError:
+            print(f"[{APP_ID}] joint index must be an integer: {joint_index_value!r}")
+            return False
+
+        if not 0 <= joint_index < self.JOINT_COUNT:
+            print(
+                f"[{APP_ID}] joint index must be between 0 and "
+                f"{self.JOINT_COUNT - 1}: {joint_index}"
+            )
+            return False
+
+        gains = self._parse_gains(kp_value, kd_value)
+        if gains is None:
+            print(f"[{APP_ID}] usage: set_joint_gain <joint_index> <kp> <kd>")
+            return False
+
+        kp, kd = gains
+        with self._gains_lock:
+            self._kp[joint_index] = kp
+            self._kd[joint_index] = kd
+        print(f"[{APP_ID}] set joint {joint_index} gains: kp={kp}, kd={kd}")
+        return True
+
+    @staticmethod
+    def _parse_gains(kp_value: str, kd_value: str) -> tuple[float, float] | None:
+        try:
+            kp = float(kp_value)
+            kd = float(kd_value)
+        except ValueError:
+            print(f"[{APP_ID}] gains must be numeric: {kp_value!r} {kd_value!r}")
+            return None
+
+        if not np.isfinite(kp) or not np.isfinite(kd) or kp < 0.0 or kd < 0.0:
+            print(f"[{APP_ID}] gains must be finite, non-negative values")
+            return None
+
+        return kp, kd
+
     TRAJECTORY_DURATION_S = 1000
     TRAJECTORY_FREQUENCY_HZ = 0.5
-    TRAJECTORY_AMPLITUDE_RAD = 0.25
+    TRAJECTORY_AMPLITUDE_RAD = 0.1
     JOINT_COUNT = 12
-    KP = 50
-    KD = 5
+    KP = 5
+    KD = 0
 
 
 def main() -> None:
