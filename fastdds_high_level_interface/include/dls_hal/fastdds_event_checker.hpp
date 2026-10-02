@@ -14,6 +14,8 @@ public:
     // Optionally override the owned logger before checking events.
     // The external logger must outlive this checker and retains its own ID.
     void setEventLogger(dls::logging::AppLogger& logger);
+    // Logger used for the events, so that robot-specific checks can log alongside the generic ones.
+    dls::logging::AppLogger& eventLogger() const;
     void check(const GenericRobotInterface& source);
 
 private:

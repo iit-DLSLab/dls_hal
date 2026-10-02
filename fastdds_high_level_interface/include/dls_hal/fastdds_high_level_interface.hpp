@@ -44,7 +44,9 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         // Optionally override the owned logger before running.
         // The external logger must outlive this interface.
         void setEventLogger(dls::logging::AppLogger& logger);
-        void checkEvents(const GenericRobotInterface& source);
+        // Checks and logs the events of a robot interface snapshot. Runs on the event thread.
+        // Override to add robot-specific checks, calling the base for the generic ones.
+        virtual void checkEvents(const RI& source);
 
         // Inputs
         dls::ReaderPtr<dls2_interface::msg::ControlSignal> input_control_signal;
@@ -62,6 +64,17 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         //! Filled by readInputs() with the received reference; copied from the source
         // in init() so its vectors already have the robot's sizes.
         RI current_input_;
+
+        //! Event checker for anomalies and safety events
+        FastDDSEventChecker event_checker_;
+
+        /**
+         * @brief Stops and joins the io and event threads. Idempotent.
+         * Derived classes overriding publishOutputs(), readInputs() or checkEvents() must call it
+         * in their destructor: the threads would otherwise keep calling the overrides while
+         * the derived members are being destroyed, before ~FastDDSHLInterface() stops them.
+         */
+        void stopThreads();
     private:
 
         //! Input/output thread
@@ -95,9 +108,6 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         // each cycle; copied from the source in init() so it is valid before the
         // first write().
         RI latest_output_;
-
-        //! Event checker for anomalies and safety events
-        FastDDSEventChecker event_checker_;
 };
 
 #include "dls_hal/fastdds_high_level_interface.tpp"

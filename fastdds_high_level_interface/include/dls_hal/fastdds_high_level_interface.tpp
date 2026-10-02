@@ -19,6 +19,11 @@ FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
 
 template <typename RI>
 FastDDSHLInterface<RI>::~FastDDSHLInterface(){
+    stopThreads();
+}
+
+template <typename RI>
+void FastDDSHLInterface<RI>::stopThreads(){
     event_thread_.request_stop(); // eventLoggingLoop() exits at most one event period later
     if (event_thread_.joinable())
         event_thread_.join();
@@ -35,7 +40,7 @@ void FastDDSHLInterface<RI>::setEventLogger(dls::logging::AppLogger& logger)
 }
 
 template <typename RI>
-void FastDDSHLInterface<RI>::checkEvents(const GenericRobotInterface& source)
+void FastDDSHLInterface<RI>::checkEvents(const RI& source)
 {
     event_checker_.check(source);
 }

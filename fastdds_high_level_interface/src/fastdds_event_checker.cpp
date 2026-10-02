@@ -107,6 +107,11 @@ void FastDDSEventChecker::setEventLogger(dls::logging::AppLogger& logger)
         &logger, [](dls::logging::AppLogger*) {});
 }
 
+dls::logging::AppLogger& FastDDSEventChecker::eventLogger() const
+{
+    return *event_logger_;
+}
+
 void FastDDSEventChecker::check(const GenericRobotInterface& ri)
 {
     checkJointLimitEvents(ri);
