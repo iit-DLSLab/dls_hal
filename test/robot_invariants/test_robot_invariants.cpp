@@ -1,0 +1,695 @@
+// Unit tests for the anomaly detection in robot_invariants.hpp.
+//
+// Every field of RobotAnomalies is covered by at least one test named after
+// it, so the gtest output maps one-to-one to the anomaly list. RobotSafety is
+// exercised directly (no HAL loop, no transport): state and commands are
+// filled by hand, then checkState / checkCommands / manageAnomalies are run.
+
+#include "dls_hal/robot_invariants.hpp"
+
+#include <gtest/gtest.h>
+
+#include <chrono>
+#include <limits>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace
+{
+
+using Safety = RobotSafety<RobotState, RobotRef, RobotCommands, RobotLimits>;
+using SafetyState = Safety::SafetyState;
+
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
+constexpr double kInf = std::numeric_limits<double>::infinity();
+constexpr unsigned int kFungoStatusWord = 4145;
+
+// Distinct limits per joint, so a wrong index shows up as a wrong flag.
+constexpr const char* kConfig = R"(
+general:
+  n_joints: 3
+  n_contacts: 4
+  n_imus: 1
+  n_batteries: 2
+  battery_full_voltage: 50.0
+robot_interface:
+  references_timeout: 0.5
+  events_frequency: 10.0
+  low_level_control:
+    mode: 1
+  safety:
+    mechanical_stress_max_torque: 30.0
+    limits:
+      position_min: [-1.0, -2.0, -3.0]
+      position_max: [1.0, 2.0, 3.0]
+      velocity_max: [10.0, 20.0, 30.0]
+      torque_max: [40.0, 50.0, 60.0]
+      current_max: [5.0, 6.0, 7.0]
+      motor_temperature_min: [-20.0, -20.0, -20.0]
+      motor_temperature_max: [80.0, 80.0, 80.0]
+      percentage_battery_charge_min: 20.0
+)";
+
+// Renders a flag vector as e.g. "010" for readable failure messages.
+std::string bits(const std::vector<bool>& flags)
+{
+    std::string out;
+    for (bool flag : flags) out += flag ? '1' : '0';
+    return out;
+}
+
+class RobotSafetyTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        config = YAML::Load(kConfig);
+        init();
+    }
+
+    // Re-run after editing `config` to apply the change.
+    void init()
+    {
+        safety.init(config);
+        state.init(config);
+        commands.init(config);
+        setNominal();
+    }
+
+    void enableMechanicalStress(double a, double b)
+    {
+        config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"]["a"] = a;
+        config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"]["b"] = b;
+        init();
+    }
+
+    // A state and command set that is inside every limit.
+    void setNominal()
+    {
+        state.names = {"j0", "j1", "j2"};
+        state.position = {0.1, 0.2, 0.3};
+        state.velocity = {1.0, 2.0, 3.0};
+        state.torque = {10.0, 10.0, 10.0};
+        state.motors_current = {1.0, 1.0, 1.0};
+        state.motor_temperature = {25.0, 25.0, 25.0};
+        state.motors_status_word = {0, 0, 0};
+        state.const_motors_status_words.fungo_pressed = kFungoStatusWord;
+        for (auto& battery : state.battery) battery.charge_percentage = 80.0;
+
+        commands.position = {0.1, 0.2, 0.3};
+        commands.velocity = {1.0, 2.0, 3.0};
+        commands.torque = {5.0, 5.0, 5.0};
+    }
+
+    const RobotAnomalies& anomalies() const { return safety.anomalies; }
+
+    // Every per-joint/per-battery flag, by name, for "nothing raised" checks.
+    std::vector<std::pair<const char*, const std::vector<bool>*>> allFlagVectors() const
+    {
+        const auto& a = safety.anomalies;
+        return {
+            {"joint_pos_limit_violation", &a.joint_pos_limit_violation},
+            {"joint_vel_limit_violation", &a.joint_vel_limit_violation},
+            {"joint_torque_limit_violation", &a.joint_torque_limit_violation},
+            {"joint_current_limit_violation", &a.joint_current_limit_violation},
+            {"nan_position_detected", &a.nan_position_detected},
+            {"nan_velocity_detected", &a.nan_velocity_detected},
+            {"nan_torque_detected", &a.nan_torque_detected},
+            {"inf_position_detected", &a.inf_position_detected},
+            {"inf_velocity_detected", &a.inf_velocity_detected},
+            {"inf_torque_detected", &a.inf_torque_detected},
+            {"joint_pos_clamping_anomaly", &a.joint_pos_clamping_anomaly},
+            {"joint_vel_clamping_anomaly", &a.joint_vel_clamping_anomaly},
+            {"joint_torque_clamping_anomaly", &a.joint_torque_clamping_anomaly},
+            {"nan_position_command_detected", &a.nan_position_command_detected},
+            {"nan_velocity_command_detected", &a.nan_velocity_command_detected},
+            {"nan_torque_command_detected", &a.nan_torque_command_detected},
+            {"inf_position_command_detected", &a.inf_position_command_detected},
+            {"inf_velocity_command_detected", &a.inf_velocity_command_detected},
+            {"inf_torque_command_detected", &a.inf_torque_command_detected},
+            {"motor_overheat_detected", &a.motor_overheat_detected},
+            {"motor_under_temperature_detected", &a.motor_under_temperature_detected},
+            {"battery_charge_low", &a.battery_charge_low},
+        };
+    }
+
+    void expectNoAnomaly() const
+    {
+        for (const auto& [name, flags] : allFlagVectors())
+            EXPECT_EQ(bits(*flags), std::string(flags->size(), '0')) << name;
+        EXPECT_FALSE(safety.isFungoPressed());
+        EXPECT_FALSE(safety.isEmergencyStopActive());
+        EXPECT_FALSE(anomalies().lost_references.load());
+        EXPECT_FALSE(anomalies().breaking_mechanics);
+    }
+
+    YAML::Node config;
+    Safety safety;
+    RobotState state;
+    RobotCommands commands;
+};
+
+// --- Baseline ---------------------------------------------------------------
+
+TEST_F(RobotSafetyTest, NominalStateAndCommandsRaiseNoAnomaly)
+{
+    safety.checkState(state);
+    safety.checkCommands(commands);
+    expectNoAnomaly();
+}
+
+TEST_F(RobotSafetyTest, ValuesExactlyOnTheLimitsAreNotAnomalies)
+{
+    state.position = {1.0, -2.0, 3.0};
+    state.velocity = {10.0, -20.0, 30.0};
+    state.torque = {40.0, -50.0, 60.0};
+    state.motors_current = {5.0, -6.0, 7.0};
+    state.motor_temperature = {80.0, -20.0, 80.0};
+    for (auto& battery : state.battery) battery.charge_percentage = 20.0;
+    commands.position = {1.0, -2.0, 3.0};
+    commands.velocity = {10.0, -20.0, 30.0};
+    commands.torque = {40.0, -50.0, 60.0};
+
+    safety.checkState(state);
+    safety.checkCommands(commands);
+    expectNoAnomaly();
+}
+
+// --- Measured-state limits --------------------------------------------------
+
+TEST_F(RobotSafetyTest, joint_pos_limit_violation)
+{
+    state.position = {1.5, 0.0, -3.5};  // above max, nominal, below min
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_pos_limit_violation), "101");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_pos_limit_violation), "000") << "flag must clear";
+}
+
+TEST_F(RobotSafetyTest, joint_vel_limit_violation)
+{
+    // velocity_min is derived as -velocity_max.
+    state.velocity = {0.0, 20.5, -30.5};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_vel_limit_violation), "011");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_vel_limit_violation), "000");
+}
+
+TEST_F(RobotSafetyTest, joint_torque_limit_violation)
+{
+    // torque_min is derived as -torque_max.
+    state.torque = {-40.5, 0.0, 60.5};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_torque_limit_violation), "101");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_torque_limit_violation), "000");
+}
+
+TEST_F(RobotSafetyTest, joint_current_limit_violation)
+{
+    // current_min is derived as -current_max.
+    state.motors_current = {0.0, 6.5, -7.5};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_current_limit_violation), "011");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().joint_current_limit_violation), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_overheat_detected)
+{
+    state.motor_temperature = {25.0, 25.0, 80.5};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_overheat_detected), "001");
+    EXPECT_EQ(bits(anomalies().motor_under_temperature_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_overheat_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_under_temperature_detected)
+{
+    state.motor_temperature = {-20.5, 25.0, 25.0};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_under_temperature_detected), "100");
+    EXPECT_EQ(bits(anomalies().motor_overheat_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_under_temperature_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, battery_charge_low)
+{
+    state.battery[1].charge_percentage = 19.5;
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().battery_charge_low), "01");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().battery_charge_low), "00");
+}
+
+// --- Measured-state NaN / Inf -----------------------------------------------
+
+TEST_F(RobotSafetyTest, nan_position_detected)
+{
+    state.position[0] = kNaN;
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_position_detected), "100");
+    EXPECT_EQ(bits(anomalies().inf_position_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_position_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, nan_velocity_detected)
+{
+    state.velocity[1] = kNaN;
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_velocity_detected), "010");
+    EXPECT_EQ(bits(anomalies().inf_velocity_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_velocity_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, nan_torque_detected)
+{
+    state.torque[2] = kNaN;
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_torque_detected), "001");
+    EXPECT_EQ(bits(anomalies().inf_torque_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().nan_torque_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, inf_position_detected)
+{
+    state.position = {kInf, 0.0, -kInf};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_position_detected), "101");
+    EXPECT_EQ(bits(anomalies().nan_position_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_position_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, inf_velocity_detected)
+{
+    state.velocity = {0.0, -kInf, kInf};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_velocity_detected), "011");
+    EXPECT_EQ(bits(anomalies().nan_velocity_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_velocity_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, inf_torque_detected)
+{
+    state.torque = {-kInf, kInf, 0.0};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_torque_detected), "110");
+    EXPECT_EQ(bits(anomalies().nan_torque_detected), "000");
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().inf_torque_detected), "000");
+}
+
+// --- Fungo (hardware emergency button) --------------------------------------
+
+TEST_F(RobotSafetyTest, fungo_pressed)
+{
+    state.motors_status_word[1] = kFungoStatusWord;
+    safety.checkState(state);
+    EXPECT_TRUE(safety.isFungoPressed());
+
+    // Recomputed every cycle: released as soon as no motor reports it.
+    setNominal();
+    safety.checkState(state);
+    EXPECT_FALSE(safety.isFungoPressed());
+}
+
+TEST_F(RobotSafetyTest, fungo_pressed_NotRaisedByOtherStatusWords)
+{
+    state.motors_status_word = {kFungoStatusWord - 1, kFungoStatusWord + 1, 0};
+    safety.checkState(state);
+    EXPECT_FALSE(safety.isFungoPressed());
+}
+
+// --- Mechanical stress (breaking_mechanics) ---------------------------------
+//
+// Raised when a joint is outside its position limits while |torque| exceeds
+// mechanical_stress_max_torque (30 Nm here) for longer than
+// a * exp(-b * (|torque| - max_torque)) seconds.
+
+TEST_F(RobotSafetyTest, breaking_mechanics_AfterSustainedStress)
+{
+    enableMechanicalStress(/*a=*/0.05, /*b=*/0.0);  // 50 ms window
+    state.position[1] = 2.5;  // outside [-2, 2]
+    state.torque[1] = 45.0;   // > 30 Nm, still within torque_max
+
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics) << "must not trigger instantly";
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    safety.checkState(state);
+    EXPECT_TRUE(anomalies().breaking_mechanics);
+
+    const auto& trigger = safety.getMechanicalStressTriggerTorque();
+    EXPECT_FALSE(trigger[0].has_value());
+    ASSERT_TRUE(trigger[1].has_value());
+    EXPECT_DOUBLE_EQ(*trigger[1], 45.0);
+    EXPECT_FALSE(trigger[2].has_value());
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_HigherTorqueShortensWindow)
+{
+    // 15 Nm excess with b = 10 gives a window of 10 * e^-150 s, i.e. ~0.
+    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
+    state.position[0] = -1.5;  // below min, negative torque: |torque| is used
+    state.torque[0] = -45.0;
+
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    safety.checkState(state);
+    EXPECT_TRUE(anomalies().breaking_mechanics);
+    ASSERT_TRUE(safety.getMechanicalStressTriggerTorque()[0].has_value());
+    EXPECT_DOUBLE_EQ(*safety.getMechanicalStressTriggerTorque()[0], -45.0);
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_NotRaisedInsidePositionLimits)
+{
+    enableMechanicalStress(/*a=*/0.01, /*b=*/0.0);
+    state.torque[1] = 45.0;  // high torque, but position nominal
+
+    safety.checkState(state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics);
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_NotRaisedBelowTorqueThreshold)
+{
+    enableMechanicalStress(/*a=*/0.01, /*b=*/0.0);
+    state.position[1] = 2.5;
+    state.torque[1] = 29.0;  // below 30 Nm
+
+    safety.checkState(state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics);
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_DisabledWithoutCoefficients)
+{
+    // Default config has no mechanical_stress_exp_coefficients.
+    state.position[1] = 2.5;
+    state.torque[1] = 45.0;
+
+    safety.checkState(state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics);
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_TimerRestartsWhenStressIsInterrupted)
+{
+    using std::chrono::milliseconds;
+    enableMechanicalStress(/*a=*/0.2, /*b=*/0.0);  // 200 ms window
+    state.position[1] = 2.5;
+    state.torque[1] = 45.0;
+
+    safety.checkState(state);                     // stress starts
+    std::this_thread::sleep_for(milliseconds(120));
+    state.position[1] = 0.0;
+    safety.checkState(state);                     // interrupted: timer reset
+    state.position[1] = 2.5;
+    safety.checkState(state);                     // stress restarts
+    std::this_thread::sleep_for(milliseconds(120));
+    safety.checkState(state);
+    // 240 ms in total, but only ~120 ms since the restart.
+    EXPECT_FALSE(anomalies().breaking_mechanics);
+}
+
+TEST_F(RobotSafetyTest, breaking_mechanics_ClearsButKeepsFirstTriggerTorque)
+{
+    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
+    state.position[1] = 2.5;
+    state.torque[1] = 45.0;
+    safety.checkState(state);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    safety.checkState(state);
+    ASSERT_TRUE(anomalies().breaking_mechanics);
+
+    state.torque[1] = 48.0;  // still stressed, higher torque
+    safety.checkState(state);
+    EXPECT_TRUE(anomalies().breaking_mechanics);
+    EXPECT_DOUBLE_EQ(*safety.getMechanicalStressTriggerTorque()[1], 45.0)
+        << "first triggering torque must be preserved";
+
+    setNominal();
+    safety.checkState(state);
+    EXPECT_FALSE(anomalies().breaking_mechanics) << "per-cycle flag must clear";
+}
+
+// --- Command clamping -------------------------------------------------------
+
+TEST_F(RobotSafetyTest, joint_pos_clamping_anomaly)
+{
+    commands.position = {-1.5, 0.0, 3.5};  // below min, nominal, above max
+    safety.checkCommands(commands);
+
+    EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "101");
+    EXPECT_DOUBLE_EQ(commands.position[0], -1.0) << "clamped to min";
+    EXPECT_DOUBLE_EQ(commands.position[1], 0.0) << "untouched";
+    EXPECT_DOUBLE_EQ(commands.position[2], 3.0) << "clamped to max";
+    EXPECT_DOUBLE_EQ(anomalies().joint_pos_command_trigger_value[0], -1.5);
+    EXPECT_DOUBLE_EQ(anomalies().joint_pos_command_trigger_value[2], 3.5);
+    EXPECT_FALSE(safety.isEmergencyStopActive()) << "clamping alone is not an e-stop";
+
+    setNominal();
+    safety.checkCommands(commands);
+    EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000");
+}
+
+TEST_F(RobotSafetyTest, joint_vel_clamping_anomaly)
+{
+    commands.velocity = {0.0, -25.0, 35.0};
+    safety.checkCommands(commands);
+
+    EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "011");
+    EXPECT_DOUBLE_EQ(commands.velocity[1], -20.0);
+    EXPECT_DOUBLE_EQ(commands.velocity[2], 30.0);
+    EXPECT_DOUBLE_EQ(anomalies().joint_vel_command_trigger_value[1], -25.0);
+    EXPECT_DOUBLE_EQ(anomalies().joint_vel_command_trigger_value[2], 35.0);
+    EXPECT_FALSE(safety.isEmergencyStopActive());
+
+    setNominal();
+    safety.checkCommands(commands);
+    EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "000");
+}
+
+TEST_F(RobotSafetyTest, joint_torque_clamping_anomaly)
+{
+    commands.torque = {100.0, 0.0, -70.0};
+    safety.checkCommands(commands);
+
+    EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "101");
+    EXPECT_DOUBLE_EQ(commands.torque[0], 40.0);
+    EXPECT_DOUBLE_EQ(commands.torque[2], -60.0);
+    EXPECT_DOUBLE_EQ(anomalies().joint_torque_command_trigger_value[0], 100.0);
+    EXPECT_DOUBLE_EQ(anomalies().joint_torque_command_trigger_value[2], -70.0);
+    EXPECT_FALSE(safety.isEmergencyStopActive());
+
+    setNominal();
+    safety.checkCommands(commands);
+    EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "000");
+}
+
+// --- Command NaN / Inf (each one latches the emergency stop) ----------------
+
+class InvalidCommandTest : public RobotSafetyTest
+{
+protected:
+    void expectInvalidCommand(std::vector<double> RobotCommands::*command,
+                              std::vector<bool> RobotAnomalies::*flag,
+                              size_t joint, double value)
+    {
+        (commands.*command)[joint] = value;
+        safety.checkCommands(commands);
+
+        std::string expected(3, '0');
+        expected[joint] = '1';
+        EXPECT_EQ(bits(safety.anomalies.*flag), expected);
+        EXPECT_TRUE(safety.isEmergencyStopActive());
+        // Invalid values are not clamping anomalies.
+        EXPECT_EQ(bits(anomalies().joint_pos_clamping_anomaly), "000");
+        EXPECT_EQ(bits(anomalies().joint_vel_clamping_anomaly), "000");
+        EXPECT_EQ(bits(anomalies().joint_torque_clamping_anomaly), "000");
+
+        // The flag clears with a valid command; the e-stop stays latched.
+        setNominal();
+        safety.checkCommands(commands);
+        EXPECT_EQ(bits(safety.anomalies.*flag), "000");
+        EXPECT_TRUE(safety.isEmergencyStopActive());
+    }
+};
+
+TEST_F(InvalidCommandTest, nan_position_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::position, &RobotAnomalies::nan_position_command_detected, 0, kNaN);
+}
+
+TEST_F(InvalidCommandTest, nan_velocity_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::velocity, &RobotAnomalies::nan_velocity_command_detected, 1, kNaN);
+}
+
+TEST_F(InvalidCommandTest, nan_torque_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::torque, &RobotAnomalies::nan_torque_command_detected, 2, kNaN);
+}
+
+TEST_F(InvalidCommandTest, inf_position_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::position, &RobotAnomalies::inf_position_command_detected, 2, kInf);
+}
+
+TEST_F(InvalidCommandTest, inf_velocity_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::velocity, &RobotAnomalies::inf_velocity_command_detected, 0, -kInf);
+}
+
+TEST_F(InvalidCommandTest, inf_torque_command_detected)
+{
+    expectInvalidCommand(&RobotCommands::torque, &RobotAnomalies::inf_torque_command_detected, 1, kInf);
+}
+
+// --- Emergency stop and lost references -------------------------------------
+
+TEST_F(RobotSafetyTest, emergency_stop_triggered)
+{
+    EXPECT_FALSE(safety.isEmergencyStopActive());
+    safety.triggerEmergencyStop();
+    EXPECT_TRUE(safety.isEmergencyStopActive());
+
+    // One-way latch: nominal cycles do not release it.
+    safety.checkState(state);
+    safety.checkCommands(commands);
+    EXPECT_TRUE(safety.isEmergencyStopActive());
+}
+
+TEST_F(RobotSafetyTest, lost_references)
+{
+    safety.setLostReferences(true);
+    EXPECT_TRUE(anomalies().lost_references.load());
+    safety.setLostReferences(false);
+    EXPECT_FALSE(anomalies().lost_references.load());
+}
+
+// --- Safety state machine and recovery (manageAnomalies) --------------------
+
+TEST_F(RobotSafetyTest, SafetyState_NominalLeavesCommandsUntouched)
+{
+    const auto expected = commands.torque;
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::NOMINAL);
+    EXPECT_EQ(commands.torque, expected);
+}
+
+TEST_F(RobotSafetyTest, SafetyState_FungoEntersEmergencyStopAndZeroesCommands)
+{
+    state.motors_status_word[0] = kFungoStatusWord;
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
+    EXPECT_EQ(commands.position, std::vector<double>(3, 0.0));
+    EXPECT_EQ(commands.velocity, std::vector<double>(3, 0.0));
+    EXPECT_EQ(commands.torque, std::vector<double>(3, 0.0));
+}
+
+TEST_F(RobotSafetyTest, SafetyState_InvalidCommandEntersEmergencyStopAndZeroesCommands)
+{
+    commands.torque[1] = kNaN;
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
+    EXPECT_EQ(commands.torque, std::vector<double>(3, 0.0)) << "NaN must not reach the hardware";
+}
+
+TEST_F(RobotSafetyTest, SafetyState_LostReferencesEntersDamping)
+{
+    safety.setLostReferences(true);
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
+    // Default damping gain is 1: torque = -velocity, position/velocity zeroed.
+    EXPECT_EQ(commands.torque, (std::vector<double>{-1.0, -2.0, -3.0}));
+    EXPECT_EQ(commands.position, std::vector<double>(3, 0.0));
+    EXPECT_EQ(commands.velocity, std::vector<double>(3, 0.0));
+}
+
+TEST_F(RobotSafetyTest, SafetyState_BreakingMechanicsEntersDamping)
+{
+    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
+    state.position[1] = 2.5;
+    state.torque[1] = 45.0;
+    safety.manageAnomalies(state, commands);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    safety.manageAnomalies(state, commands);
+    ASSERT_TRUE(anomalies().breaking_mechanics);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
+}
+
+TEST_F(RobotSafetyTest, SafetyState_EmergencyStopHasPriorityOverDamping)
+{
+    safety.setLostReferences(true);
+    safety.triggerEmergencyStop();
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
+}
+
+TEST_F(RobotSafetyTest, SafetyState_DampingEscalatesToEmergencyStop)
+{
+    safety.setLostReferences(true);
+    safety.manageAnomalies(state, commands);
+    ASSERT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
+
+    safety.triggerEmergencyStop();
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
+}
+
+// Pins current behavior: setSafetyState() only escalates, so the robot stays
+// in DAMPING after the references come back. Change this test if a recovery
+// path back to NOMINAL is added.
+TEST_F(RobotSafetyTest, SafetyState_IsLatchedAfterAnomalyClears)
+{
+    safety.setLostReferences(true);
+    safety.manageAnomalies(state, commands);
+    ASSERT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
+
+    safety.setLostReferences(false);
+    setNominal();
+    safety.manageAnomalies(state, commands);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
+}
+
+}  // namespace

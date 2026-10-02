@@ -22,6 +22,13 @@ add_subdirectory(robot_interface)
 add_subdirectory(fastdds_high_level_interface)
 add_subdirectory(test/test_hal)
 
+option(DLS_HAL_BUILD_TESTS "Build the dls_hal unit tests (needs GTest)" ${BUILD_TESTING})
+if(DLS_HAL_BUILD_TESTS)
+  find_package(GTest REQUIRED)
+  enable_testing()
+  add_subdirectory(test/robot_invariants)
+endif()
+
 if(DLS_HAL_BUILD_PYTHON_BINDINGS)
   add_subdirectory(python)
 endif()
