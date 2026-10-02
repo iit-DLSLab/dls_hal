@@ -104,7 +104,9 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     if (release_tolerance_node){
         release_tolerance = release_tolerance_node.as<double>();
     }
-    recovery_virtual_joint_limit.init(n_joint, release_tolerance);
+    const auto damping_after_stop_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_after_stop"];
+    const bool damping_after_stop = damping_after_stop_node ? damping_after_stop_node.as<bool>() : false;
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -171,8 +173,14 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                     .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
                                0.0, joint_position_threshold_min, joint_position_threshold_max);
             }
-        } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
-            recovery_virtual_joint_limit.reset(i);
+        } else {
+            // With damping_after_stop, a joint moving away from the limit is damped from then on
+            // and never released; otherwise it is released once back at its anchor.
+            recovery_virtual_joint_limit.updateDampingOnly(i, state.velocity[i]);
+            if (!recovery_virtual_joint_limit.isDampingOnly(i)
+                && recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
+                recovery_virtual_joint_limit.reset(i);
+            }
         }
         anomalies.joint_vel_limit_violation[i] = checkJointStateLimit(state.velocity[i], limits.velocity_min[i], limits.velocity_max[i]);
         anomalies.joint_torque_limit_violation[i] = checkJointStateLimit(state.torque[i], limits.torque_min[i], limits.torque_max[i]);
@@ -349,6 +357,7 @@ void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug)
     debug.side = recovery_virtual_joint_limit.getSide();
     debug.k = recovery_virtual_joint_limit.getK();
     debug.d = recovery_virtual_joint_limit.getD();
+    debug.damping_only = recovery_virtual_joint_limit.getDampingOnly();
     debug.anchor.resize(debug.side.size());
     for (size_t i = 0; i < debug.anchor.size(); ++i) {
         debug.anchor[i] = recovery_virtual_joint_limit.getAnchor(i);

@@ -87,7 +87,7 @@ void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) 
     }
 }
 
-void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance){
+void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, bool damping_after_stop){
     if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
         throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
     }
@@ -99,7 +99,9 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance){
     q_min_trigger_ = limits_.position_min;
     q_max_trigger_ = limits_.position_max;
     side_.assign(n_joint, 0);
+    damping_only_.assign(n_joint, false);
     release_tolerance_ = release_tolerance;
+    damping_after_stop_ = damping_after_stop;
 }
 
 void RecoveryVirtualJointLimit::reset(size_t index){
@@ -112,6 +114,7 @@ void RecoveryVirtualJointLimit::reset(size_t index){
     q_min_trigger_[index] = limits_.position_min[index];
     q_max_trigger_[index] = limits_.position_max[index];
     side_[index] = 0;
+    damping_only_[index] = false;
 }
 
 bool RecoveryVirtualJointLimit::isActive(size_t index) const {
@@ -120,6 +123,25 @@ bool RecoveryVirtualJointLimit::isActive(size_t index) const {
 
 bool RecoveryVirtualJointLimit::anyActive() const {
     return std::any_of(side_.begin(), side_.end(), [](int side) { return side != 0; });
+}
+
+void RecoveryVirtualJointLimit::updateDampingOnly(size_t index, double velocity) {
+    if (!damping_after_stop_ || !isActive(index) || damping_only_[index]) {
+        return;
+    }
+    // Braking moves the joint toward the limit (side * velocity > 0); a sign change means it
+    // stopped short of the limit and now moves away from it.
+    if (side_[index] * velocity < 0.0) {
+        damping_only_[index] = true;
+    }
+}
+
+bool RecoveryVirtualJointLimit::isDampingOnly(size_t index) const {
+    return index < damping_only_.size() && damping_only_[index];
+}
+
+const std::vector<bool>& RecoveryVirtualJointLimit::getDampingOnly() const {
+    return damping_only_;
 }
 
 const std::vector<double>& RecoveryVirtualJointLimit::getK() const {
@@ -222,6 +244,11 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
     for (std::size_t id = 0; id < joint_count; ++id) {
         // Only active joints are braked; the others keep their controller torque.
         if (side_[id] == 0) {
+            continue;
+        }
+        // Latched damping only: the joint is no longer sprung back, wherever it is.
+        if (damping_only_[id]) {
+            commands.torque[id] = -d_[id] * state.velocity[id];
             continue;
         }
         const double q = state.position[id];

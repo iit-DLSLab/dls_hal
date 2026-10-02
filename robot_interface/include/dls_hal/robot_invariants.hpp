@@ -192,6 +192,7 @@ struct VirtualJointLimitDebug{
     std::vector<double> anchor;  // [rad], NaN when inactive
     std::vector<double> k;       // [Nm/rad]
     std::vector<double> d;       // [Nm*s/rad]
+    std::vector<bool> damping_only; // latched damping only (damping_after_stop)
 };
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits>

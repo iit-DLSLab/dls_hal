@@ -138,6 +138,7 @@ void FastDDSHLInterface::write(const GenericRobotInterface& source){
     safety_debug.virtual_joint_limit_anchor() = virtual_joint_limit_debug_.anchor;
     safety_debug.virtual_joint_limit_k() = virtual_joint_limit_debug_.k;
     safety_debug.virtual_joint_limit_d() = virtual_joint_limit_debug_.d;
+    safety_debug.virtual_joint_limit_damping_only() = virtual_joint_limit_debug_.damping_only;
 
     transport.write();
 }

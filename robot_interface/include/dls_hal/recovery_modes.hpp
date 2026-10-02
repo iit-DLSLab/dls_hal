@@ -64,8 +64,10 @@ public:
      * 
      * @param n_joint 
      * @param release_tolerance [rad]: how close to its anchor a joint must be back to deactivate.
+     * @param damping_after_stop: once a braked joint starts moving away from the limit, only damp
+     *        it from then on (latched until the HAL restarts) instead of springing it back.
      */
-    void init(size_t n_joint, double release_tolerance);
+    void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false);
 
     /**
      * @brief Activates a joint whose limit violation is predicted: anchors the spring at the
@@ -92,6 +94,18 @@ public:
     void reset(size_t index);
     bool isActive(size_t index) const;
     bool anyActive() const;
+
+    /**
+     * @brief With damping_after_stop, latches an active joint into damping only once its velocity
+     *        has changed sign (impact avoided, now moving away from the limit). Never released:
+     *        the joint stays damped until the HAL restarts. No effect without damping_after_stop.
+     * 
+     * @param index 
+     * @param velocity 
+     */
+    void updateDampingOnly(size_t index, double velocity);
+    bool isDampingOnly(size_t index) const;
+    const std::vector<bool>& getDampingOnly() const;
 
     /**
      * @brief Per-joint spring stiffness [Nm/rad], damping [Nm*s/rad] and side (+1 braking
@@ -137,7 +151,9 @@ private:
     std::vector<double> q_min_trigger_;
     std::vector<double> q_max_trigger_;
     std::vector<int> side_; // +1 braking toward position_max, -1 toward position_min, 0 inactive
+    std::vector<bool> damping_only_; // latched: damped with d_ only, never released
     double release_tolerance_ = 0.0;
+    bool damping_after_stop_ = false;
 };
 
 #endif
