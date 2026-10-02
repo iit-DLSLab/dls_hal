@@ -200,7 +200,9 @@ public:
     
     virtual void checkState(const TState& state);
 
-    virtual void checkCommands(TCommands& commands);
+    // Checks only the commands sent to the hardware in control_mode (position,
+    // velocity, or torque for TORQUE/IMPEDANCE); the others are not computed.
+    virtual void checkCommands(TCommands& commands, CONTROL_MODE control_mode);
 
     virtual bool checkJointStateLimit(double value, double min_limit, double max_limit);
     virtual bool checkJointStateNanInf(double value);
@@ -236,7 +238,7 @@ public:
 
     TLimits limits;
 
-    void manageAnomalies(const TState& state, TCommands& commands);
+    void manageAnomalies(const TState& state, TCommands& commands, CONTROL_MODE control_mode);
 
     private:
         void setFungoPressed(bool pressed);

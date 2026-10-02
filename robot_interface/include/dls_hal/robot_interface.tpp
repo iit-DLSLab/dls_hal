@@ -37,10 +37,10 @@ void ROBOT_INTERFACE_TYPE::checkState(){
 
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::checkCommands(){
-    safety.checkCommands(low_level_control.commands);
+    safety.checkCommands(low_level_control.commands, low_level_control.control_mode);
 }
 
 ROBOT_INTERFACE_TEMPLATE
 void ROBOT_INTERFACE_TYPE::manageAnomalies(){
-    safety.manageAnomalies(state, low_level_control.commands);
+    safety.manageAnomalies(state, low_level_control.commands, low_level_control.control_mode);
 }

@@ -198,10 +198,30 @@ void ROBOT_SAFETY_TYPE::checkCommand(std::vector<double>& command , std::vector<
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::checkCommands(TCommands& commands) {
-    checkCommand(commands.position, limits.position_min, limits.position_max, anomalies.nan_position_command_detected, anomalies.inf_position_command_detected, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_command_trigger_value);
-    checkCommand(commands.velocity, limits.velocity_min, limits.velocity_max, anomalies.nan_velocity_command_detected, anomalies.inf_velocity_command_detected, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_command_trigger_value);
-    checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_command_trigger_value);
+void ROBOT_SAFETY_TYPE::checkCommands(TCommands& commands, CONTROL_MODE control_mode) {
+    // The low-level interfaces send only the command of the control mode. The
+    // other commands are not computed and keep their init or recovery values
+    // (zero), which would raise false anomalies, e.g. a zero position command
+    // is outside the knee range. Unknown modes check everything.
+    bool check_position = false, check_velocity = false, check_torque = false;
+    switch (control_mode) {
+        case CONTROL_MODE::POSITION_CONTROL: check_position = true; break;
+        case CONTROL_MODE::VELOCITY_CONTROL: check_velocity = true; break;
+        case CONTROL_MODE::TORQUE_CONTROL:
+        case CONTROL_MODE::IMPEDANCE_CONTROL: check_torque = true; break;
+        default: check_position = check_velocity = check_torque = true; break;
+    }
+    const auto clear = [](std::vector<bool>& nan, std::vector<bool>& inf, std::vector<bool>& clamping) {
+        std::fill(nan.begin(), nan.end(), false);
+        std::fill(inf.begin(), inf.end(), false);
+        std::fill(clamping.begin(), clamping.end(), false);
+    };
+    if (check_position)
+        checkCommand(commands.position, limits.position_min, limits.position_max, anomalies.nan_position_command_detected, anomalies.inf_position_command_detected, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_clamping_anomaly, anomalies.joint_pos_command_trigger_value);
+     if (check_velocity)
+        checkCommand(commands.velocity, limits.velocity_min, limits.velocity_max, anomalies.nan_velocity_command_detected, anomalies.inf_velocity_command_detected, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_clamping_anomaly, anomalies.joint_vel_command_trigger_value);
+   if (check_torque)
+        checkCommand(commands.torque, limits.torque_min, limits.torque_max, anomalies.nan_torque_command_detected, anomalies.inf_torque_command_detected, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_clamping_anomaly, anomalies.joint_torque_command_trigger_value);
 }
 
 
@@ -260,9 +280,9 @@ const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStress
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
+void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands, CONTROL_MODE control_mode) {
     checkState(state);
-    checkCommands(commands);
+    checkCommands(commands, control_mode);
     // set safety state machine based on the anomalies detected
     setSafetyState();
     // execute the corresponding recovery mode based on the safety state machine
