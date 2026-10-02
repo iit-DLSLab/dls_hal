@@ -80,7 +80,7 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         //! Input/output thread
         std::jthread io_thread_; 
         //! Period of the io_thread_ thread
-        std::chrono::duration<double> io_period_;
+        std::chrono::duration<double> io_period_{std::chrono::duration<double>(0.001)}; // 1 kHz unless io_frequency is set
         /**
          * @brief Runs on io_thread_. Reads the DDS inputs into reference_queue_ and publishes the snapshots queued in state_queue_.
         */
