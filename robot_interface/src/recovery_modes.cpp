@@ -255,7 +255,7 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     // At or past the limit there is no room left to size k on: brake as hard as possible.
     const bool outside_limit = upper_limit ? position >= q_max : position <= q_min;
 
-    double sqrt_k = sqrt_k_max;
+    double sqrt_k = 0.0; //sqrt_k_max; damping only if outside limit, else spring-damper
     if (!outside_limit) {
         // Spring-damper anchored at the trigger, d = 2 * zeta * sqrt(k * I). From velocity w the
         // deepest penetration is w * sqrt(I / k) * p (p = penetration_factor_, 1 / e when
