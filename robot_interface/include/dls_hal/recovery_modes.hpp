@@ -128,6 +128,12 @@ public:
     const std::vector<int>& getSide() const;
 
     /**
+     * @brief Per-joint torque [Nm] the last execute() computed, before the torque limits clamp
+     *        it; NaN for joints whose controller torque was kept.
+     */
+    const std::vector<double>& getTorque() const;
+
+    /**
      * @brief Anchor [rad] of an active joint, NaN when the joint is inactive.
      * 
      * @param index 
@@ -164,6 +170,7 @@ private:
     std::vector<double> q_max_trigger_;
     std::vector<int> side_; // +1 braking toward position_max, -1 toward position_min, 0 inactive
     std::vector<bool> damping_only_; // latched: damped with d_ only, never released
+    std::vector<double> tau_; // [Nm] computed by the last execute(), NaN when not overridden
     double release_tolerance_ = 0.0;
     bool damping_after_stop_ = false;
     double damping_ratio_ = 1.0;

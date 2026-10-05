@@ -385,6 +385,7 @@ void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug)
     debug.k = recovery_virtual_joint_limit.getK();
     debug.d = recovery_virtual_joint_limit.getD();
     debug.damping_only = recovery_virtual_joint_limit.getDampingOnly();
+    debug.torque = recovery_virtual_joint_limit.getTorque();
     debug.anchor.resize(debug.side.size());
     for (size_t i = 0; i < debug.anchor.size(); ++i) {
         debug.anchor[i] = recovery_virtual_joint_limit.getAnchor(i);

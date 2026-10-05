@@ -193,6 +193,7 @@ struct VirtualJointLimitDebug{
     std::vector<double> k;       // [Nm/rad]
     std::vector<double> d;       // [Nm*s/rad]
     std::vector<bool> damping_only; // latched damping only (damping_after_stop)
+    std::vector<double> torque;  // [Nm] computed before the torque limits clamp, NaN when not overridden
 };
 
 template <typename TState, typename TRef, typename TCommands, typename TLimits>

@@ -104,6 +104,7 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     q_max_trigger_ = limits_.position_max;
     side_.assign(n_joint, 0);
     damping_only_.assign(n_joint, false);
+    tau_.assign(n_joint, std::numeric_limits<double>::quiet_NaN());
     release_tolerance_ = release_tolerance;
     damping_after_stop_ = damping_after_stop;
     damping_ratio_ = damping_ratio;
@@ -138,6 +139,7 @@ void RecoveryVirtualJointLimit::reset(size_t index){
     q_max_trigger_[index] = limits_.position_max[index];
     side_[index] = 0;
     damping_only_[index] = false;
+    tau_[index] = std::numeric_limits<double>::quiet_NaN();
 }
 
 bool RecoveryVirtualJointLimit::isActive(size_t index) const {
@@ -177,6 +179,10 @@ const std::vector<double>& RecoveryVirtualJointLimit::getD() const {
 
 const std::vector<int>& RecoveryVirtualJointLimit::getSide() const {
     return side_;
+}
+
+const std::vector<double>& RecoveryVirtualJointLimit::getTorque() const {
+    return tau_;
 }
 
 double RecoveryVirtualJointLimit::getAnchor(size_t index) const {
@@ -290,6 +296,7 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
     const auto joint_count = std::min({state.position.size(), state.velocity.size(), commands.torque.size(),
                                        limits_.position_min.size(), side_.size()});
+    std::fill(tau_.begin(), tau_.end(), std::numeric_limits<double>::quiet_NaN());
     for (std::size_t id = 0; id < joint_count; ++id) {
         // Only active joints are braked; the others keep their controller torque.
         if (side_[id] == 0) {
@@ -297,7 +304,8 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
         }
         // Latched damping only: the joint is no longer sprung back, wherever it is.
         if (damping_only_[id]) {
-            commands.torque[id] = -d_[id] * state.velocity[id];
+            tau_[id] = -d_[id] * state.velocity[id];
+            commands.torque[id] = tau_[id];
             continue;
         }
         const double q = state.position[id];
@@ -306,7 +314,8 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
         // already brakes through the damping term (zero penetration, no spring force yet).
         // The spring-damper torque replaces the controller torque until the joint is back.
         if (side_[id] * (q - anchor) >= 0.0) {
-            commands.torque[id] = k_[id] * (anchor - q) - d_[id] * state.velocity[id];
+            tau_[id] = k_[id] * (anchor - q) - d_[id] * state.velocity[id];
+            commands.torque[id] = tau_[id];
         }
     }
 }
