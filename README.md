@@ -525,3 +525,7 @@ if __name__ == "__main__":
 The robot-interface test constructs a `QuadrupedInterface`, loads the example configuration, verifies vector sizes and basic access, and calls `computeCommands()`.
 
 add info specifically for generic robot interface and fastdddshlinterface
+
+### [Virtual joint limit recovery procedure](docs/virtual_joint_limit.md)
+
+Recovery mode specifically designed for avoiding hittinh endstop with high angular velocity and provide robustness in a test setup. 

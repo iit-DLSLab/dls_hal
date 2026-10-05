@@ -210,18 +210,43 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
 
     const double tau_push = std::max(toward_sign * torque, 0.0);
 
-    // Critically damped spring-damper anchored at the trigger, d = 2 * sqrt(k * I).
-    // From velocity w the penetration is q(t) - anchor = w * t * exp(-t * sqrt(k / I)),
-    // deepest at t = sqrt(I / k): w * sqrt(I / k) / e. A constant push tau adds at most tau / k.
-    // k is chosen so that the joint stops exactly at the limit:
-    //   w * sqrt(I / k) / e + tau / k = dq  ->  dq * k - (w * sqrt(I) / e) * sqrt(k) - tau = 0
-    // (tau = 0: k = I * w^2 / (e^2 * dq^2)). The peak torque is d * w at the trigger, which the
-    // threshold sizes to the available torque. Stiffer gains would stop it earlier but
-    // demand more torque.
-    const double w_term = considered_velocity * std::sqrt(inertia) / M_E; // w * sqrt(I) / e
-    const double sqrt_k =
-        (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * tau_push))
-        / (2.0 * dq_remaining);
+    // Nothing to absorb (e.g. past the limit but already moving back inside): activating
+    // would latch zero gains and override the controller with zero torque.
+    if (considered_velocity <= 0.0 && tau_push <= 0.0) {
+        return;
+    }
+
+    // k_max: the stiffest gain the actuator can realize. The activation torque, spring on the
+    // initial penetration p0 plus damping on w, is the peak of the braking; k_max makes it equal
+    // the torque available in the braking direction:
+    //   p0 * k + 2 * sqrt(I) * w * sqrt(k) = tau_avail
+    // A stiffer k would only be clamped downstream and chatter (-d * v saturating both ways).
+    const double tau_avail = upper_limit ? std::abs(limits_.torque_min[index])
+                                         : std::abs(limits_.torque_max[index]);
+    const double p0 = std::max(toward_sign * (position - anchor), 0.0);
+    const double b_term = 2.0 * std::sqrt(inertia) * considered_velocity;
+    const double sqrt_k_max = p0 > 0.0
+        ? (-b_term + std::sqrt(b_term * b_term + 4.0 * p0 * tau_avail)) / (2.0 * p0)
+        : (b_term > 0.0 ? tau_avail / b_term : std::numeric_limits<double>::infinity());
+
+    // At or past the limit there is no room left to size k on: brake as hard as possible.
+    const bool outside_limit = upper_limit ? position >= q_max : position <= q_min;
+
+    double sqrt_k = sqrt_k_max;
+    if (!outside_limit) {
+        // Critically damped spring-damper anchored at the trigger, d = 2 * sqrt(k * I).
+        // From velocity w the penetration is q(t) - anchor = w * t * exp(-t * sqrt(k / I)),
+        // deepest at t = sqrt(I / k): w * sqrt(I / k) / e. A constant push tau adds at most tau / k.
+        // k is chosen so that the joint stops exactly at the limit:
+        //   w * sqrt(I / k) / e + tau / k = dq  ->  dq * k - (w * sqrt(I) / e) * sqrt(k) - tau = 0
+        // (tau = 0: k = I * w^2 / (e^2 * dq^2)). Still capped by k_max: close to the limit dq is
+        // tiny and the distance-based k would exceed what the actuator can deliver.
+        const double w_term = considered_velocity * std::sqrt(inertia) / M_E; // w * sqrt(I) / e
+        const double sqrt_k_distance =
+            (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * tau_push))
+            / (2.0 * dq_remaining);
+        sqrt_k = std::min(sqrt_k_distance, sqrt_k_max);
+    }
 
     const double new_k = sqrt_k * sqrt_k;
     const double new_d = 2.0 * std::sqrt(new_k * inertia);
