@@ -228,7 +228,7 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     // threshold itself can lie beyond the opposite limit when the torque saturates.
     const double anchor = std::clamp(position, q_min, q_max);
 
-    constexpr double dq_eps = 1e-6; // Denominator regulation term
+    constexpr double dq_eps = 0.1; //1e-6; // Denominator regulation term
     const double dq_remaining = std::max(upper_limit ? q_max - anchor : anchor - q_min, dq_eps);
 
     const double tau_push = std::max(toward_sign * torque, 0.0);

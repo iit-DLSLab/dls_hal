@@ -145,7 +145,7 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     // Ignore controller braking contribution (torque driving away from limit) for robustness.
     // Only a fraction of the torque limit is budgeted for braking: the rest is headroom
     // for model errors (inertia, velocity prediction, external torque).
-    constexpr double tau_net_eps = 1e-6; // Denominator regulation term
+    constexpr double tau_net_eps = 0.1; //1e-6; // Denominator regulation term
     const double tau_net_max = std::max(
         virtual_joint_limit_torque_scale * std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
     const double tau_net_min = std::max(
