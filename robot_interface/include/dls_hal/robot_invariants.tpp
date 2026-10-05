@@ -111,7 +111,25 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     }
     const auto damping_after_stop_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_after_stop"];
     const bool damping_after_stop = damping_after_stop_node ? damping_after_stop_node.as<bool>() : false;
-    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop);
+    // Brake stiffness, set either as the damping ratio zeta in [0.5, 1] or as the stiffness scale
+    // k / k(zeta = 1) = 1 / zeta^2 in [1, 4]; default 1 (critically damped).
+    const auto damping_ratio_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_ratio"];
+    const auto stiffness_scale_node = config["robot_interface"]["safety"]["virtual_joint_limit_stiffness_scale"];
+    if (damping_ratio_node && stiffness_scale_node)
+        throw std::invalid_argument("robot_interface.safety: set either virtual_joint_limit_damping_ratio or "
+                                    "virtual_joint_limit_stiffness_scale, not both");
+    double damping_ratio = 1.0;
+    if (damping_ratio_node) {
+        damping_ratio = damping_ratio_node.as<double>();
+        if (!std::isfinite(damping_ratio) || damping_ratio < 0.5 || damping_ratio > 1.0)
+            throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_damping_ratio must be in [0.5, 1]");
+    } else if (stiffness_scale_node) {
+        const double stiffness_scale = stiffness_scale_node.as<double>();
+        if (!std::isfinite(stiffness_scale) || stiffness_scale < 1.0 || stiffness_scale > 4.0)
+            throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_stiffness_scale must be in [1, 4]");
+        damping_ratio = 1.0 / std::sqrt(stiffness_scale);
+    }
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -132,17 +150,19 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
         virtual_joint_limit_torque_scale * std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
     const double tau_net_min = std::max(
         virtual_joint_limit_torque_scale * std::abs(limits.torque_max[i]) - std::max(-torque, 0.0), tau_net_eps);
-    // Stopping distance of the critically damped virtual joint limit whose peak torque
-    // (at the trigger) equals the available torque: 2 * I * v^2 / (e * tau_net), i.e.
-    // 4/e times the full-torque braking distance. Plus the distance covered during the
-    // up to one control period between the threshold crossing and its detection.
+    // Stopping distance of the virtual joint limit whose peak torque (at the trigger) equals
+    // the available torque: c * I * v^2 / tau_net, with c = 2 / e when critically damped
+    // (4/e times the full-torque braking distance), smaller for a stiffer, underdamped brake.
+    // Plus the distance covered during the up to one control period between the threshold
+    // crossing and its detection.
+    const double c = recovery_virtual_joint_limit.getStoppingDistanceCoefficient();
     const double delta_q_max =
         velocity > 0.0
-        ? 2.0 * limits.joint_inertia[i] * velocity * velocity / (M_E * tau_net_max) + velocity * control_period
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_max + velocity * control_period
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? 2.0 * limits.joint_inertia[i] * velocity * velocity / (M_E * tau_net_min) - velocity * control_period
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_min - velocity * control_period
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;

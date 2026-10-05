@@ -59,7 +59,9 @@ $$
 d=2\zeta\sqrt{kI}
 $$
 
-For critical damping:
+$\zeta$ is a parameter, `virtual_joint_limit_damping_ratio` in
+$[0.5, 1]$ (default $1$). Sections 3 to 5 and the trigger derivation of
+Section 6 are written for the default, critical damping:
 
 $$
 \boxed{\zeta=1}
@@ -71,7 +73,18 @@ $$
 d=2\sqrt{kI}
 $$
 
-Critical damping provides the fastest response without oscillations.
+Critical damping provides the fastest response without oscillations. The
+general-$\zeta$ form of each result, which is what the code implements,
+is given next to it and collected in Section 6, "Stiffer brake: damping
+ratio". In short, two factors replace the critically damped constants:
+
+$$
+p(\zeta) = e^{-\zeta\arccos\zeta/\sqrt{1-\zeta^2}} \quad (p(1) = 1/e),
+\qquad
+o(\zeta) = 1 + e^{-\pi\zeta/\sqrt{1-\zeta^2}} \quad (o(1) = 1)
+$$
+
+($p$: `penetration_factor_`, $o$: `push_overshoot_` in `recovery_modes.cpp`).
 
 ------------------------------------------------------------------------
 
@@ -150,7 +163,13 @@ x_{max} = \frac{\omega}{e}\sqrt{\frac{I}{k}}
 $$
 
 The factor $e$ comes from the exponential decay term evaluated at the
-maximum penetration.
+maximum penetration. For a general $\zeta$ the deepest point is at
+$\omega_d t = \arccos\zeta$ ($\omega_d = \omega_n\sqrt{1-\zeta^2}$) and
+$\frac{1}{e}$ becomes $p(\zeta)$:
+
+$$
+x_{max} = p(\zeta)\,\omega\sqrt{\frac{I}{k}}
+$$
 
 ------------------------------------------------------------------------
 
@@ -188,7 +207,11 @@ d=2\sqrt{kI}
 $$
 
 This pair of gains is consistent with the actual spring-damper
-transient.
+transient. For a general $\zeta$:
+
+$$
+k = \frac{p(\zeta)^2 I\omega^2}{\Delta q^2}, \qquad d = 2\zeta\sqrt{kI}
+$$
 
 ## Gain cap
 
@@ -208,12 +231,15 @@ $$
 p_0 = x(0) = q - q_{trigger} \ge 0
 $$
 
-and the critically damped torque magnitude is still largest at
-activation, where it is
+and the torque magnitude is still largest at activation (for
+$\zeta \ge 0.5$), where it is
 
 $$
-|\tau_{peak}| = kp_0 + d\omega = kp_0 + 2\sqrt{I}\,\omega\sqrt{k}
+|\tau_{peak}| = kp_0 + d\omega = kp_0 + 2\zeta\sqrt{I}\,\omega\sqrt{k}
 $$
+
+The formulas below are written for $\zeta = 1$; for a general $\zeta$,
+replace $2\sqrt{I}$ with $2\zeta\sqrt{I}$ (`b_term` in the code).
 
 $k_{max}$ makes this peak equal the torque available in the braking
 direction, $\tau_{avail}$ (`torque_min` magnitude for the upper limit,
@@ -238,6 +264,9 @@ $$
 k_{max} = \frac{\tau_{avail}^2}{4I\omega^2}
 \qquad (p_0 = 0)
 $$
+
+(general $\zeta$: $k_{max} = \frac{\tau_{avail}^2}{4\zeta^2 I\omega^2}$,
+with $d = \tau_{avail}/\omega$ unchanged).
 
 The last expression is the gain of Section 5 evaluated at the trigger
 distance with $\alpha = 1$ (Section 7): $k_{max}$ is exactly the gain the
@@ -270,7 +299,7 @@ The trigger distance must match the stopping distance of the braking law
 that will actually be applied.
 
 The gains (Section 5) and the trigger answer two different questions
-about the same critically damped transient:
+about the same spring-damper transient (critically damped by default):
 
 -   **Gains**: given $\Delta q$, which $k$ and $d$ stop the joint exactly
     at the limit? For any $\Delta q$, however small, Section 5 returns
@@ -295,7 +324,9 @@ $t=\frac{2}{\omega_n}$, and the small lobe that follows (pulling the joint
 back towards the anchor) never exceeds about $2.5\%$ of the peak.
 Therefore, keeping the torque within a bound over the whole transient is
 exactly the same condition as keeping it within that bound at
-activation.
+activation. For $\zeta < 1$ the profile differs, but the peak is still
+at activation as long as $\zeta \ge 0.5$, which is why the parameter is
+limited to $[0.5, 1]$.
 
 If the protection is activated later than the trigger (smaller
 $\Delta q$), the gains still aim at stopping at the limit, but they require
@@ -356,7 +387,14 @@ $$
 \Delta q_{trigger} = \frac{2I\omega^2}{e\alpha\tau_{max}} + |\omega|T
 $$
 
-where $T$ is the control period.
+where $T$ is the control period. For a general $\zeta$, $\frac{2}{e}$
+becomes $c(\zeta) = 2\zeta\,p(\zeta)$
+(`getStoppingDistanceCoefficient()`, used by the trigger so that it
+always matches the gains):
+
+$$
+\Delta q_{trigger} = c(\zeta)\,\frac{I\omega^2}{\alpha\tau_{max}} + |\omega|T
+$$
 
 ## Torque budget scaling
 
@@ -470,6 +508,64 @@ budget, so the only explicit headroom is $\alpha < 1$, which further
 scales the distance by $1/\alpha$. A conservative (overestimated) inertia
 also lengthens the distance linearly and acts as an implicit margin.
 
+## Stiffer brake: damping ratio
+
+Most of the extra distance can be recovered with a stiffer, underdamped
+spring. The peak torque is pure damping ($d\,\omega$ at activation), so
+$d = \alpha\tau_{max}/\omega$ is fixed by the budget whatever the damping
+ratio $\zeta$; with $d = 2\zeta\sqrt{kI}$, lowering $\zeta$ only raises the
+stiffness:
+
+$$
+\frac{k}{k_{\zeta=1}} = \frac{1}{\zeta^2}
+$$
+
+The underdamped penetration from velocity $\omega$ is deepest at
+$\omega_d t = \arccos\zeta$, which gives
+
+$$
+\Delta q_{trigger} = c(\zeta)\,\frac{I\omega^2}{\alpha\tau_{max}} + |\omega|T,
+\qquad
+c(\zeta) = 2\zeta\, e^{-\zeta\arccos\zeta/\sqrt{1-\zeta^2}}
+$$
+
+with $c(1) = 2/e$ (the critically damped case above). The same factor
+replaces $1/e$ in the distance-based gains of Section 5, and the
+constant-push term $\tau/k$ becomes $(1+e^{-\pi\zeta/\sqrt{1-\zeta^2}})\,\tau/k$
+(the step-response overshoot). This holds for $\zeta \in [0.5, 1]$: below
+$0.5$ the torque peak is no longer at activation, the spring torque exceeds
+the budget before the stop and the brake saturates.
+
+![Trigger distance for a stiffer spring at unchanged damping](virtual_joint_limit_trigger_distance_k.png)
+
+| $\zeta$ | $k/k_{\zeta=1}$ | distance vs bang-bang | vs $\zeta = 1$ | $\Delta q_{trigger}$ at $10\,rad/s$ ($I = 1.07$, $120\,Nm$) |
+|---|---|---|---|---|
+| 1.0 | 1 | 1.47 | 1.00 | 37.6° |
+| 0.71 | 2 | 1.29 | 0.88 | 32.9° |
+| 0.5 | 4 | 1.09 | 0.74 | 27.9° |
+
+If we stick to $k = 4\,k_{\zeta=1}$ ($\zeta = 0.5$), the trigger distance
+for different torque budgets $\alpha\tau_{max}$ is (dashed: the critically
+damped brake with $120\,Nm$, for reference):
+
+![Trigger distance at k = 4 k for different torque budgets](virtual_joint_limit_trigger_distance_k_taus.png)
+
+| $\alpha\tau_{max}$ [Nm] | 120 | 150 | 180 | 220 | 300 |
+|---|---|---|---|---|---|
+| $\Delta q_{trigger}$ at $10\,rad/s$ [deg] | 27.9 | 22.3 | 18.6 | 15.2 | 11.2 |
+
+Only the torque the actuator can actually deliver is meaningful here: a
+budget above it moves the trigger later than the brake can stop the joint
+from, so the command saturates and the joint overshoots.
+
+The delay term $|\omega|T$ is left out of the table and the figure. The
+stiffer brake also overshoots less under an unmodeled external torque
+(see Section 7): with a constant push of $0.2\,\alpha\tau_{max}$, the extra
+penetration is about $0.21\,\Delta q_{min}$ at $\zeta = 0.5$ against
+$0.58\,\Delta q_{min}$ at $\zeta = 1$. Set $\zeta$ with
+`virtual_joint_limit_damping_ratio`, or equivalently $k/k_{\zeta=1}$ with
+`virtual_joint_limit_stiffness_scale` (see Parameters).
+
 ------------------------------------------------------------------------
 
 # 7. Conservative assumptions and simplifications
@@ -538,6 +634,9 @@ $$
 \delta x \le \frac{\tau_{ext}}{k}
 $$
 
+(general $\zeta$: the underdamped step response overshoots, so
+$\delta x \le o(\zeta)\,\frac{\tau_{ext}}{k}$).
+
 to the penetration, i.e. the joint can go up to $\frac{\tau_{ext}}{k}$
 beyond the limit, and it settles there.
 
@@ -555,6 +654,10 @@ $$
 \delta x \approx \frac{4I\omega^2\tau_{ext}}{\alpha^2\tau_{max}^2}
 $$
 
+For a general $\zeta$, with $k = \frac{\alpha^2\tau_{max}^2}{4\zeta^2 I\omega^2}$,
+it becomes $\delta x \approx o(\zeta)\,\frac{4\zeta^2 I\omega^2\tau_{ext}}{\alpha^2\tau_{max}^2}$:
+a stiffer brake (lower $\zeta$) is pushed less far.
+
 It grows with the square of the velocity at activation and linearly with
 the external torque. A lower $\alpha$ makes it worse ($1/\alpha^2$): the
 protection fires earlier but with a softer spring. The torque budget
@@ -568,6 +671,7 @@ the penetration further.
 The gain computation already supports a known push: with
 $\tau_{push}$ in the stopping condition,
 $\frac{\omega}{e}\sqrt{\frac{I}{k}} + \frac{\tau_{push}}{k} = \Delta q$
+(general $\zeta$: $p(\zeta)\,\omega\sqrt{\frac{I}{k}} + o(\zeta)\frac{\tau_{push}}{k} = \Delta q$)
 is solved for $k$, and the trigger subtracts $\tau_{push}$ from the
 torque budget. It is currently set to zero, since no estimate of
 $\tau_{ext}$ is available.
@@ -609,7 +713,8 @@ The proposed approach intentionally trades some optimality for:
     $\alpha\tau_{max}$:
 
 $$
-\Delta q_{trigger} = \frac{2I\omega_{next}^2}{e\alpha\tau_{max}} + |\omega_{next}|T
+\Delta q_{trigger} = c(\zeta)\,\frac{I\omega_{next}^2}{\alpha\tau_{max}} + |\omega_{next}|T,
+\qquad c(\zeta) = 2\zeta\,p(\zeta) \quad (c(1) = 2/e)
 $$
 
 2.  When the joint position crosses $q_{limit} - \Delta q_{trigger}$,
@@ -619,11 +724,12 @@ $$
     limit:
 
 $$
-k= \min\left(\frac{I\omega^2}{e^2\Delta q^2},\ k_{max}\right)
+k= \min\left(\frac{p(\zeta)^2 I\omega^2}{\Delta q^2},\ k_{max}\right)
+\qquad (p(1) = 1/e)
 $$
 
 $$
-d=2\sqrt{kI}
+d=2\zeta\sqrt{kI}
 $$
 
 with $k_{max}$ from "Gain cap" (Section 5); past the limit, $k = k_{max}$.
@@ -674,6 +780,8 @@ key is missing.
 | `limits.torque_max` / `torque_min` | — | $\tau_{max}$: the torque limit the commands are clamped to, and the base of the trigger's torque budget. |
 | `control_period` | `0` | $T$ \[s\]: sizes the delay margin $\lvert\omega\rvert T$ and the one-period velocity prediction $\omega_{next}$. `0` disables both. |
 | `virtual_joint_limit_torque_scale` | `1.0` | $\alpha \in (0, 1]$: fraction of $\tau_{max}$ the trigger is sized on (Section 6, torque budget scaling). Below `1` the protection fires earlier, with $1/\alpha$ times the braking distance, and keeps $(1-\alpha)\tau_{max}$ as headroom against model errors. |
+| `virtual_joint_limit_damping_ratio` | `1.0` | $\zeta \in [0.5, 1]$ of the brake (Section 6, stiffer brake). The damping $d$ is fixed by the torque budget, so lowering $\zeta$ raises the stiffness by $1/\zeta^2$ and shortens the trigger distance (e.g. $\times 0.74$ at $0.5$). Mutually exclusive with `virtual_joint_limit_stiffness_scale`. |
+| `virtual_joint_limit_stiffness_scale` | `1.0` | $k/k_{\zeta=1} \in [1, 4]$: the same setting expressed as a stiffness factor, $\zeta = 1/\sqrt{\text{scale}}$. Mutually exclusive with `virtual_joint_limit_damping_ratio`. |
 | `virtual_joint_limit_min_velocity` | `0.3` | \[rad/s\] The protection is not activated below this joint speed, even past the position limits. Avoids engaging the brake for slow motions near the limit. |
 | `virtual_joint_limit_release_tolerance` | `1e-3` | \[rad\] A braked joint is released, giving control back to the nominal controller, once it is back within this distance of its anchor and no longer moving towards the limit. |
 | `virtual_joint_limit_damping_after_stop` | `false` | If `true`, once a braked joint reverses direction (spring braking ended) only the damping is applied, and the joint is never released until the HAL restarts (see "Known issue: return to the anchor"). |

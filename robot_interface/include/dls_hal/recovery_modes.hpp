@@ -66,8 +66,20 @@ public:
      * @param release_tolerance [rad]: how close to its anchor a joint must be back to deactivate.
      * @param damping_after_stop: once a braked joint starts moving away from the limit, only damp
      *        it from then on (latched until the HAL restarts) instead of springing it back.
+     * @param damping_ratio: zeta of the spring-damper, in [0.5, 1]. The peak torque (pure damping,
+     *        at activation) fixes d, so zeta only sets the stiffness: k = k(zeta = 1) / zeta^2.
+     *        Below 1 the brake stops in a shorter distance; below 0.5 the peak torque is no longer
+     *        at activation and the sizing below does not hold.
      */
-    void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false);
+    void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false,
+              double damping_ratio = 1.0);
+
+    /**
+     * @brief c(zeta) in the stopping distance c * I * w^2 / tau of the brake whose peak torque
+     *        is tau: 2 * zeta * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)), 2 / e at zeta = 1.
+     *        The trigger must use it, so that it matches the braking law.
+     */
+    double getStoppingDistanceCoefficient() const;
 
     /**
      * @brief Activates a joint whose limit violation is predicted: anchors the spring at the
@@ -154,6 +166,11 @@ private:
     std::vector<bool> damping_only_; // latched: damped with d_ only, never released
     double release_tolerance_ = 0.0;
     bool damping_after_stop_ = false;
+    double damping_ratio_ = 1.0;
+    // Penetration from velocity w: w * sqrt(I / k) * penetration_factor_ (1 / e at zeta = 1).
+    double penetration_factor_ = 1.0 / M_E;
+    // Peak of the step response to a constant push tau, in units of tau / k (1 at zeta = 1).
+    double push_overshoot_ = 1.0;
 };
 
 #endif

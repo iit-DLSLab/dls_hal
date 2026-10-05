@@ -87,12 +87,16 @@ void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) 
     }
 }
 
-void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, bool damping_after_stop){
+void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, bool damping_after_stop,
+                                     double damping_ratio){
     if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
         throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
     }
     if (!std::isfinite(release_tolerance) || release_tolerance < 0.0) {
         throw std::invalid_argument("Virtual joint limit release tolerance must be finite and non-negative");
+    }
+    if (!std::isfinite(damping_ratio) || damping_ratio < 0.5 || damping_ratio > 1.0) {
+        throw std::invalid_argument("Virtual joint limit damping ratio must be in [0.5, 1]");
     }
     k_.assign(n_joint, 0.0);
     d_.assign(n_joint, 0.0);
@@ -102,6 +106,25 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     damping_only_.assign(n_joint, false);
     release_tolerance_ = release_tolerance;
     damping_after_stop_ = damping_after_stop;
+    damping_ratio_ = damping_ratio;
+    // Underdamped (zeta < 1): x(t) = w / w_d * exp(-zeta * w_n * t) * sin(w_d * t), deepest at
+    // w_d * t = arccos(zeta), i.e. w / w_n * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)).
+    // The constant-push step response overshoots tau / k by exp(-pi * zeta / sqrt(1 - zeta^2)).
+    // Both tend to the critically damped values (1 / e and 1) as zeta -> 1.
+    if (damping_ratio < 1.0) {
+        const double s = std::sqrt(1.0 - damping_ratio * damping_ratio);
+        penetration_factor_ = std::exp(-damping_ratio * std::acos(damping_ratio) / s);
+        push_overshoot_ = 1.0 + std::exp(-M_PI * damping_ratio / s);
+    } else {
+        penetration_factor_ = 1.0 / M_E;
+        push_overshoot_ = 1.0;
+    }
+}
+
+double RecoveryVirtualJointLimit::getStoppingDistanceCoefficient() const {
+    // Peak torque d * w = tau with d = 2 * zeta * sqrt(k * I) gives w_n = tau / (2 * zeta * I * w),
+    // so the penetration w / w_n * penetration_factor is (2 * zeta * penetration_factor) * I * w^2 / tau.
+    return 2.0 * damping_ratio_ * penetration_factor_;
 }
 
 void RecoveryVirtualJointLimit::reset(size_t index){
@@ -217,14 +240,14 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     }
 
     // k_max: the stiffest gain the actuator can realize. The activation torque, spring on the
-    // initial penetration p0 plus damping on w, is the peak of the braking; k_max makes it equal
-    // the torque available in the braking direction:
-    //   p0 * k + 2 * sqrt(I) * w * sqrt(k) = tau_avail
+    // initial penetration p0 plus damping on w, is the peak of the braking (for zeta >= 0.5);
+    // k_max makes it equal the torque available in the braking direction:
+    //   p0 * k + 2 * zeta * sqrt(I) * w * sqrt(k) = tau_avail
     // A stiffer k would only be clamped downstream and chatter (-d * v saturating both ways).
     const double tau_avail = upper_limit ? std::abs(limits_.torque_min[index])
                                          : std::abs(limits_.torque_max[index]);
     const double p0 = std::max(toward_sign * (position - anchor), 0.0);
-    const double b_term = 2.0 * std::sqrt(inertia) * considered_velocity;
+    const double b_term = 2.0 * damping_ratio_ * std::sqrt(inertia) * considered_velocity;
     const double sqrt_k_max = p0 > 0.0
         ? (-b_term + std::sqrt(b_term * b_term + 4.0 * p0 * tau_avail)) / (2.0 * p0)
         : (b_term > 0.0 ? tau_avail / b_term : std::numeric_limits<double>::infinity());
@@ -234,22 +257,23 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
 
     double sqrt_k = sqrt_k_max;
     if (!outside_limit) {
-        // Critically damped spring-damper anchored at the trigger, d = 2 * sqrt(k * I).
-        // From velocity w the penetration is q(t) - anchor = w * t * exp(-t * sqrt(k / I)),
-        // deepest at t = sqrt(I / k): w * sqrt(I / k) / e. A constant push tau adds at most tau / k.
+        // Spring-damper anchored at the trigger, d = 2 * zeta * sqrt(k * I). From velocity w the
+        // deepest penetration is w * sqrt(I / k) * p (p = penetration_factor_, 1 / e when
+        // critically damped). A constant push tau adds at most o * tau / k (o = push_overshoot_).
         // k is chosen so that the joint stops exactly at the limit:
-        //   w * sqrt(I / k) / e + tau / k = dq  ->  dq * k - (w * sqrt(I) / e) * sqrt(k) - tau = 0
-        // (tau = 0: k = I * w^2 / (e^2 * dq^2)). Still capped by k_max: close to the limit dq is
-        // tiny and the distance-based k would exceed what the actuator can deliver.
-        const double w_term = considered_velocity * std::sqrt(inertia) / M_E; // w * sqrt(I) / e
+        //   w * sqrt(I / k) * p + o * tau / k = dq  ->  dq * k - (w * sqrt(I) * p) * sqrt(k) - o * tau = 0
+        // (tau = 0, zeta = 1: k = I * w^2 / (e^2 * dq^2)). Still capped by k_max: close to the
+        // limit dq is tiny and the distance-based k would exceed what the actuator can deliver.
+        const double w_term = considered_velocity * std::sqrt(inertia) * penetration_factor_;
+        const double push_term = push_overshoot_ * tau_push;
         const double sqrt_k_distance =
-            (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * tau_push))
+            (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * push_term))
             / (2.0 * dq_remaining);
         sqrt_k = std::min(sqrt_k_distance, sqrt_k_max);
     }
 
     const double new_k = sqrt_k * sqrt_k;
-    const double new_d = 2.0 * std::sqrt(new_k * inertia);
+    const double new_d = 2.0 * damping_ratio_ * std::sqrt(new_k * inertia);
 
     if (!std::isfinite(new_k) || !std::isfinite(new_d) || new_k < 0.0 || new_d < 0.0
         || !std::isfinite(anchor)) {
