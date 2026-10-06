@@ -47,17 +47,24 @@ class TestHalApp(PeriodicAppPlugin):
             ControlSignal.ControlSignal(),
         )
         self.writer_example.data.control_mode(1)
+        
+        self.add_command(
+            "set_torque",
+            "Set joint torques: <joint_index>[,<joint_index>...]:<torque>[,<torque>...]",
+            self._split_args(self._set_torque, 2),
+            enabled=True,
+        )
 
         self.add_command(
             "set_gains",
-            "Set all joint gains: <kp> <kd>",
-            self._set_gains,
+            "Set all joint gains: <kp>:<kd>",
+            self._split_args(self._set_gains, 2),
             enabled=True,
         )
         self.add_command(
             "set_joint_gain",
-            "Set one joint's gains: <joint_index> <kp> <kd>",
-            self._set_joint_gain,
+            "Set one joint's gains: <joint_index>:<kp>:<kd>",
+            self._split_args(self._set_joint_gain, 3),
             enabled=True,
         )
     # commenting to use default activation check from PeriodicAppPlugin
@@ -69,6 +76,37 @@ class TestHalApp(PeriodicAppPlugin):
     #     del timestamp_ns
     #     return True
 
+    @staticmethod
+    def _split_args(fn, count: int):
+        """add_command only accepts one string arg: split it on ':' for fn."""
+        def callback(args: str) -> bool:
+            fields = args.split(":")
+            if len(fields) != count:
+                print(f"[{APP_ID}] expected {count} ':'-separated args, got {args!r}")
+                return False
+            return fn(*fields)
+        return callback
+
+    def _set_torque(self, joint_index: str, torque: str) -> bool:
+        try:
+            indices = [int(value.strip()) for value in joint_index.split(",")]
+            values = [float(value.strip()) for value in torque.split(",")]
+        except ValueError:
+            print(f"[{APP_ID}] malformed set_torque args: {joint_index!r} {torque!r}")
+            return False
+        if len(indices) != len(values):
+            print(f"[{APP_ID}] expected one torque per joint index")
+            return False
+        if any(not 0 <= idx < self.JOINT_COUNT for idx in indices) or not np.all(np.isfinite(values)):
+            print(f"[{APP_ID}] invalid joint index or torque: {indices} {values}")
+            return False
+
+        torques = np.zeros(self.JOINT_COUNT)
+        for idx, tau in zip(indices, values):
+            torques[idx] = tau
+        self.writer_example.data.joints_torques(self._as_double_vector(torques))
+        return True
+        
     def run(self, timestamp_ns: int) -> None:
         # Add your periodic logic here.
         # Example:
@@ -204,7 +242,7 @@ class TestHalApp(PeriodicAppPlugin):
     TRAJECTORY_FREQUENCY_HZ = 0.5
     TRAJECTORY_AMPLITUDE_RAD = 0.1
     JOINT_COUNT = 12
-    KP = 5
+    KP = 0
     KD = 0
 
 

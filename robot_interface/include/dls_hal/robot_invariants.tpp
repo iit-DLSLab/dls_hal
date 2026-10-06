@@ -231,8 +231,9 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         } else {
             // Once the brake has stopped it (with damping_after_stop: latched, i.e. turned back),
             // a joint slower than min_velocity within slow_release_zone of a limit (or past it)
-            // goes back to the controller: otherwise -d * v keeps turning velocity noise into
-            // torque on a joint at the limit.
+            // is no longer damped: otherwise -d * v keeps turning velocity noise into torque on a
+            // joint at the limit. With damping_after_stop it is held at zero torque until the HAL
+            // restarts; otherwise it goes back to the controller.
             const bool at_limit = state.position[i] >= limits.position_max[i] - virtual_joint_limit_slow_release_zone
                 || state.position[i] <= limits.position_min[i] + virtual_joint_limit_slow_release_zone;
             // With damping_after_stop, a joint is damped only once the brake has stopped it and
@@ -242,7 +243,11 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                 || recovery_virtual_joint_limit.isDampingOnly(i);
             if (virtual_joint_limit_slow_release_zone > 0.0 && at_limit && stopped
                 && std::abs(state.velocity[i]) < virtual_joint_limit_min_velocity) {
-                recovery_virtual_joint_limit.reset(i);
+                if (recovery_virtual_joint_limit.isDampingAfterStop()) {
+                    recovery_virtual_joint_limit.holdZeroTorque(i);
+                } else {
+                    recovery_virtual_joint_limit.reset(i);
+                }
             } else if (recovery_virtual_joint_limit.isDampingAfterStop()) {
                 recovery_virtual_joint_limit.updateDampingOnly(i, state.position[i]);
             } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {

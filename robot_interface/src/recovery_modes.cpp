@@ -183,6 +183,15 @@ bool RecoveryVirtualJointLimit::isDampingOnly(size_t index) const {
     return index < damping_only_.size() && damping_only_[index];
 }
 
+void RecoveryVirtualJointLimit::holdZeroTorque(size_t index) {
+    if (!isDampingOnly(index)) {
+        return;
+    }
+    // Damping only with zero gains: execute() then commands zero torque on this joint.
+    k_[index] = 0.0;
+    d_[index] = 0.0;
+}
+
 bool RecoveryVirtualJointLimit::isDampingAfterStop() const {
     return damping_after_stop_;
 }

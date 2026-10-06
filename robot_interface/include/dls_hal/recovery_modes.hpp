@@ -131,6 +131,14 @@ public:
      */
     void updateDampingOnly(size_t index, double position);
     bool isDampingOnly(size_t index) const;
+
+    /**
+     * @brief Zero torque on a joint latched into damping only (no effect otherwise): the joint
+     *        stays active, overriding the controller with zero torque, until the HAL restarts.
+     * 
+     * @param index 
+     */
+    void holdZeroTorque(size_t index);
     bool isDampingAfterStop() const;
     const std::vector<bool>& getDampingOnly() const;
 
