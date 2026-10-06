@@ -70,9 +70,11 @@ public:
      *        at activation) fixes d, so zeta only sets the stiffness: k = k(zeta = 1) / zeta^2.
      *        Below 1 the brake stops in a shorter distance; below 0.5 the peak torque is no longer
      *        at activation and the sizing below does not hold.
+     * @param stop_retreat [rad]: with damping_after_stop, how far a braked joint must move back
+     *        from the deepest position it reached before it is latched into damping only.
      */
     void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false,
-              double damping_ratio = 1.0);
+              double damping_ratio = 1.0, double stop_retreat = 1e-3);
 
     /**
      * @brief c(zeta) in the stopping distance c * I * w^2 / tau of the brake whose peak torque
@@ -108,15 +110,19 @@ public:
     bool anyActive() const;
 
     /**
-     * @brief With damping_after_stop, latches an active joint into damping only once its velocity
-     *        has changed sign (impact avoided, now moving away from the limit). Never released:
-     *        the joint stays damped until the HAL restarts. No effect without damping_after_stop.
+     * @brief With damping_after_stop, latches an active joint into damping only once it has
+     *        moved back by more than stop_retreat from the deepest position reached since its
+     *        activation (impact avoided, now moving away from the limit). Decided on position,
+     *        not on the velocity sign, so that velocity noise cannot latch a joint still moving
+     *        toward the limit. Never released: the joint stays damped until the HAL restarts.
+     *        No effect without damping_after_stop.
      * 
      * @param index 
-     * @param velocity 
+     * @param position 
      */
-    void updateDampingOnly(size_t index, double velocity);
+    void updateDampingOnly(size_t index, double position);
     bool isDampingOnly(size_t index) const;
+    bool isDampingAfterStop() const;
     const std::vector<bool>& getDampingOnly() const;
 
     /**
@@ -170,9 +176,11 @@ private:
     std::vector<double> q_max_trigger_;
     std::vector<int> side_; // +1 braking toward position_max, -1 toward position_min, 0 inactive
     std::vector<bool> damping_only_; // latched: damped with d_ only, never released
+    std::vector<double> peak_position_; // [rad] deepest position toward the limit since activation, NaN when inactive
     std::vector<double> tau_; // [Nm] computed by the last execute(), NaN when not overridden
     double release_tolerance_ = 0.0;
     bool damping_after_stop_ = false;
+    double stop_retreat_ = 1e-3;
     double damping_ratio_ = 1.0;
     // Penetration from velocity w: w * sqrt(I / k) * penetration_factor_ (1 / e at zeta = 1).
     double penetration_factor_ = 1.0 / M_E;

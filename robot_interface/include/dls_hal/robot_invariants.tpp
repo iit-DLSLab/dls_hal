@@ -116,6 +116,8 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     }
     const auto damping_after_stop_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_after_stop"];
     const bool damping_after_stop = damping_after_stop_node ? damping_after_stop_node.as<bool>() : false;
+    const auto stop_retreat_node = config["robot_interface"]["safety"]["virtual_joint_limit_stop_retreat"];
+    const double stop_retreat = stop_retreat_node ? stop_retreat_node.as<double>() : 1e-3;
     // Brake stiffness, set either as the damping ratio zeta in [0.5, 1] or as the stiffness scale
     // k / k(zeta = 1) = 1 / zeta^2 in [1, 4]; default 1 (critically damped).
     const auto damping_ratio_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_ratio"];
@@ -134,7 +136,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
             throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_stiffness_scale must be in [1, 4]");
         damping_ratio = 1.0 / std::sqrt(stiffness_scale);
     }
-    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio);
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio, stop_retreat);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -225,11 +227,12 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                 }
             }
         } else {
-            // With damping_after_stop, a joint moving away from the limit is damped from then on
-            // and never released; otherwise it is released once back at its anchor.
-            recovery_virtual_joint_limit.updateDampingOnly(i, state.velocity[i]);
-            if (!recovery_virtual_joint_limit.isDampingOnly(i)
-                && recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
+            // With damping_after_stop, a joint is damped only once the brake has stopped it and
+            // it moves back from the deepest point reached, and is never released afterwards.
+            // Otherwise it is released once back at its anchor.
+            if (recovery_virtual_joint_limit.isDampingAfterStop()) {
+                recovery_virtual_joint_limit.updateDampingOnly(i, state.position[i]);
+            } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
                 recovery_virtual_joint_limit.reset(i);
             }
         }
