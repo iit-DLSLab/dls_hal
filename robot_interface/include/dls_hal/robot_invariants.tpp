@@ -37,6 +37,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     virtual_joint_limit_min_velocity = min_velocity_node ? min_velocity_node.as<double>() : 0.3;
     if (!std::isfinite(virtual_joint_limit_min_velocity) || virtual_joint_limit_min_velocity < 0.0)
         throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_min_velocity must be finite and non-negative (rad/s)");
+    const auto slow_release_zone_node = config["robot_interface"]["safety"]["virtual_joint_limit_slow_release_zone"];
+    virtual_joint_limit_slow_release_zone = slow_release_zone_node ? slow_release_zone_node.as<double>() : 0.0;
+    if (!std::isfinite(virtual_joint_limit_slow_release_zone) || virtual_joint_limit_slow_release_zone < 0.0)
+        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_slow_release_zone must be finite and non-negative (rad)");
     const auto torque_scale_node = config["robot_interface"]["safety"]["virtual_joint_limit_torque_scale"];
     virtual_joint_limit_torque_scale = torque_scale_node ? torque_scale_node.as<double>() : 1.0;
     if (!std::isfinite(virtual_joint_limit_torque_scale) || virtual_joint_limit_torque_scale <= 0.0
@@ -225,10 +229,21 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                 }
             }
         } else {
+            // Once the brake has stopped it (with damping_after_stop: latched, i.e. turned back),
+            // a joint slower than min_velocity within slow_release_zone of a limit (or past it)
+            // goes back to the controller: otherwise -d * v keeps turning velocity noise into
+            // torque on a joint at the limit.
+            const bool at_limit = state.position[i] >= limits.position_max[i] - virtual_joint_limit_slow_release_zone
+                || state.position[i] <= limits.position_min[i] + virtual_joint_limit_slow_release_zone;
             // With damping_after_stop, a joint is damped only once the brake has stopped it and
             // it moves back from the deepest point reached, and is never released afterwards.
             // Otherwise it is released once back at its anchor.
-            if (recovery_virtual_joint_limit.isDampingAfterStop()) {
+            const bool stopped = !recovery_virtual_joint_limit.isDampingAfterStop()
+                || recovery_virtual_joint_limit.isDampingOnly(i);
+            if (virtual_joint_limit_slow_release_zone > 0.0 && at_limit && stopped
+                && std::abs(state.velocity[i]) < virtual_joint_limit_min_velocity) {
+                recovery_virtual_joint_limit.reset(i);
+            } else if (recovery_virtual_joint_limit.isDampingAfterStop()) {
                 recovery_virtual_joint_limit.updateDampingOnly(i, state.position[i]);
             } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
                 recovery_virtual_joint_limit.reset(i);

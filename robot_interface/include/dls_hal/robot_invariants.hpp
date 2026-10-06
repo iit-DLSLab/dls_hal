@@ -291,6 +291,9 @@ public:
         double control_period; // seconds; 0 disables delay compensation
         // Below this joint speed the virtual joint limit is not activated.
         double virtual_joint_limit_min_velocity; // rad/s
+        // Within this distance of a limit (or past it), an active joint slower than
+        // virtual_joint_limit_min_velocity is released back to the controller; 0 disables.
+        double virtual_joint_limit_slow_release_zone; // rad
         // Fraction of the torque limit the virtual joint limit trigger is sized on, in (0, 1].
         // Below 1 it triggers earlier, leaving the rest as headroom for model errors.
         double virtual_joint_limit_torque_scale;
