@@ -88,7 +88,7 @@ void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) 
 }
 
 void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, bool damping_after_stop,
-                                     double damping_ratio, double stop_retreat){
+                                     double damping_ratio, double stop_retreat, double min_braking_time){
     if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
         throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
     }
@@ -100,6 +100,9 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     }
     if (!std::isfinite(stop_retreat) || stop_retreat < 0.0) {
         throw std::invalid_argument("Virtual joint limit stop retreat must be finite and non-negative");
+    }
+    if (!std::isfinite(min_braking_time) || min_braking_time < 0.0) {
+        throw std::invalid_argument("Virtual joint limit min braking time must be finite and non-negative");
     }
     k_.assign(n_joint, 0.0);
     d_.assign(n_joint, 0.0);
@@ -113,6 +116,7 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     damping_after_stop_ = damping_after_stop;
     damping_ratio_ = damping_ratio;
     stop_retreat_ = stop_retreat;
+    min_braking_time_ = min_braking_time;
     // Underdamped (zeta < 1): x(t) = w / w_d * exp(-zeta * w_n * t) * sin(w_d * t), deepest at
     // w_d * t = arccos(zeta), i.e. w / w_n * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)).
     // The constant-push step response overshoots tau / k by exp(-pi * zeta / sqrt(1 - zeta^2)).
@@ -131,6 +135,10 @@ double RecoveryVirtualJointLimit::getStoppingDistanceCoefficient() const {
     // Peak torque d * w = tau with d = 2 * zeta * sqrt(k * I) gives w_n = tau / (2 * zeta * I * w),
     // so the penetration w / w_n * penetration_factor is (2 * zeta * penetration_factor) * I * w^2 / tau.
     return 2.0 * damping_ratio_ * penetration_factor_;
+}
+
+double RecoveryVirtualJointLimit::getMinBrakingTime() const {
+    return min_braking_time_;
 }
 
 void RecoveryVirtualJointLimit::reset(size_t index){
@@ -290,6 +298,12 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
             (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * push_term))
             / (2.0 * dq_remaining);
         sqrt_k = std::min(sqrt_k_distance, sqrt_k_max);
+        // d_max = I / T_min caps the gain itself: k_max only bounds the torque for the velocity
+        // measured at the trigger (d <= tau / w), unbounded for a slow or noisy trigger. A joint
+        // triggered too close to the limit for d_max overshoots it at low speed instead.
+        if (min_braking_time_ > 0.0) {
+            sqrt_k = std::min(sqrt_k, std::sqrt(inertia) / (2.0 * damping_ratio_ * min_braking_time_));
+        }
     }
 
     const double new_k = sqrt_k * sqrt_k;

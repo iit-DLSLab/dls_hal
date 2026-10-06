@@ -72,9 +72,12 @@ public:
      *        at activation and the sizing below does not hold.
      * @param stop_retreat [rad]: with damping_after_stop, how far a braked joint must move back
      *        from the deepest position it reached before it is latched into damping only.
+     * @param min_braking_time [s]: T_min, caps the damping at d_max = I / T_min whatever the
+     *        trigger (slow, noisy, next to the limit), so that velocity noise, latency and inertia
+     *        errors are amplified by a bounded gain. 0 disables the cap.
      */
     void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false,
-              double damping_ratio = 1.0, double stop_retreat = 1e-3);
+              double damping_ratio = 1.0, double stop_retreat = 1e-3, double min_braking_time = 0.0);
 
     /**
      * @brief c(zeta) in the stopping distance c * I * w^2 / tau of the brake whose peak torque
@@ -82,6 +85,12 @@ public:
      *        The trigger must use it, so that it matches the braking law.
      */
     double getStoppingDistanceCoefficient() const;
+
+    /**
+     * @brief T_min [s] of the damping cap d_max = I / T_min, 0 when disabled. With the cap the
+     *        stopping distance from w is at least c * w * T_min, which the trigger must use.
+     */
+    double getMinBrakingTime() const;
 
     /**
      * @brief Activates a joint whose limit violation is predicted: anchors the spring at the
@@ -182,6 +191,7 @@ private:
     bool damping_after_stop_ = false;
     double stop_retreat_ = 1e-3;
     double damping_ratio_ = 1.0;
+    double min_braking_time_ = 0.0; // [s] T_min, d <= I / T_min; 0 disables the cap
     // Penetration from velocity w: w * sqrt(I / k) * penetration_factor_ (1 / e at zeta = 1).
     double penetration_factor_ = 1.0 / M_E;
     // Peak of the step response to a constant push tau, in units of tau / k (1 at zeta = 1).

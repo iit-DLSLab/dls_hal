@@ -118,6 +118,8 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     const bool damping_after_stop = damping_after_stop_node ? damping_after_stop_node.as<bool>() : false;
     const auto stop_retreat_node = config["robot_interface"]["safety"]["virtual_joint_limit_stop_retreat"];
     const double stop_retreat = stop_retreat_node ? stop_retreat_node.as<double>() : 1e-3;
+    const auto min_braking_time_node = config["robot_interface"]["safety"]["virtual_joint_limit_min_braking_time"];
+    const double min_braking_time = min_braking_time_node ? min_braking_time_node.as<double>() : 0.0;
     // Brake stiffness, set either as the damping ratio zeta in [0.5, 1] or as the stiffness scale
     // k / k(zeta = 1) = 1 / zeta^2 in [1, 4]; default 1 (critically damped).
     const auto damping_ratio_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_ratio"];
@@ -136,7 +138,8 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
             throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_stiffness_scale must be in [1, 4]");
         damping_ratio = 1.0 / std::sqrt(stiffness_scale);
     }
-    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio, stop_retreat);
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio, stop_retreat,
+                                      min_braking_time);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -160,17 +163,22 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     // Stopping distance of the virtual joint limit whose peak torque (at the trigger) equals
     // the available torque: c * I * v^2 / tau_net, with c = 2 / e when critically damped
     // (4/e times the full-torque braking distance), smaller for a stiffer, underdamped brake.
+    // With the damping capped at d_max = I / T_min, a slow joint is not braked at full torque:
+    // its stopping distance is at least c * |v| * T_min.
     // Plus the distance covered between the threshold crossing and the activation: up to one
     // control period to detect it, then the trigger_samples - 1 periods that confirm it.
     const double c = recovery_virtual_joint_limit.getStoppingDistanceCoefficient();
+    const double min_braking_distance = c * std::abs(velocity) * recovery_virtual_joint_limit.getMinBrakingTime();
     const double trigger_delay = virtual_joint_limit_trigger_samples * control_period;
     const double delta_q_max =
         velocity > 0.0
-        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_max + velocity * trigger_delay
+        ? std::max(c * limits.joint_inertia[i] * velocity * velocity / tau_net_max, min_braking_distance)
+          + velocity * trigger_delay
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_min - velocity * trigger_delay
+        ? std::max(c * limits.joint_inertia[i] * velocity * velocity / tau_net_min, min_braking_distance)
+          - velocity * trigger_delay
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;
@@ -214,16 +222,6 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
                 // braking distance (limit - threshold) against the model.
                 if (recovery_virtual_joint_limit.isActive(i)) {
                     const int side = recovery_virtual_joint_limit.getSide()[i];
-                    std::cout << "[safety] vjl trigger joint " << i << " side=" << side
-                              << " q=" << state.position[i] << " v=" << state.velocity[i]
-                              << " tau_meas=" << state.torque[i] << " v_next=" << velocity_next
-                              << " threshold=" << (side > 0 ? joint_position_threshold_max : joint_position_threshold_min)
-                              << " delta_q=" << (side > 0 ? limits.position_max[i] - joint_position_threshold_max
-                                                          : joint_position_threshold_min - limits.position_min[i])
-                              << " c=" << recovery_virtual_joint_limit.getStoppingDistanceCoefficient()
-                              << " I=" << limits.joint_inertia[i]
-                              << " k=" << recovery_virtual_joint_limit.getK()[i]
-                              << " d=" << recovery_virtual_joint_limit.getD()[i] << std::endl;
                 }
             }
         } else {
