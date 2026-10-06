@@ -294,6 +294,10 @@ public:
         // Fraction of the torque limit the virtual joint limit trigger is sized on, in (0, 1].
         // Below 1 it triggers earlier, leaving the rest as headroom for model errors.
         double virtual_joint_limit_torque_scale;
+        // Consecutive cycles a violation must be predicted before the virtual joint limit
+        // activates, so that a single noisy velocity sample cannot trigger it.
+        int virtual_joint_limit_trigger_samples;
+        std::vector<int> virtual_joint_limit_predicted_count; // consecutive predicted cycles, per joint
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

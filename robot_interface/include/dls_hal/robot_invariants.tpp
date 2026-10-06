@@ -42,7 +42,12 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     if (!std::isfinite(virtual_joint_limit_torque_scale) || virtual_joint_limit_torque_scale <= 0.0
         || virtual_joint_limit_torque_scale > 1.0)
         throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_torque_scale must be in (0, 1]");
+    const auto trigger_samples_node = config["robot_interface"]["safety"]["virtual_joint_limit_trigger_samples"];
+    virtual_joint_limit_trigger_samples = trigger_samples_node ? trigger_samples_node.as<int>() : 1;
+    if (virtual_joint_limit_trigger_samples < 1)
+        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_trigger_samples must be >= 1");
     const auto n_joint = config["general"]["n_joints"].as<int>();
+    virtual_joint_limit_predicted_count.assign(n_joint, 0);
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
@@ -153,16 +158,17 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     // Stopping distance of the virtual joint limit whose peak torque (at the trigger) equals
     // the available torque: c * I * v^2 / tau_net, with c = 2 / e when critically damped
     // (4/e times the full-torque braking distance), smaller for a stiffer, underdamped brake.
-    // Plus the distance covered during the up to one control period between the threshold
-    // crossing and its detection.
+    // Plus the distance covered between the threshold crossing and the activation: up to one
+    // control period to detect it, then the trigger_samples - 1 periods that confirm it.
     const double c = recovery_virtual_joint_limit.getStoppingDistanceCoefficient();
+    const double trigger_delay = virtual_joint_limit_trigger_samples * control_period;
     const double delta_q_max =
         velocity > 0.0
-        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_max + velocity * control_period
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_max + velocity * trigger_delay
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_min - velocity * control_period
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_min - velocity * trigger_delay
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;
@@ -176,11 +182,12 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     for (size_t i = 0; i < state.position.size(); ++i) {
         double joint_position_threshold_min;
         double joint_position_threshold_max;
-        // Velocity one control period ahead: until the trigger is detected, the torque applied
-        // during the cycle (last measured) still accelerates the joint. Zero inertia disables
-        // the prediction, so it also skips this step.
+        // Velocity trigger_samples control periods ahead: until the trigger activates, the torque
+        // applied during each cycle (last measured) still accelerates the joint. Zero inertia
+        // disables the prediction, so it also skips this step.
         const double velocity_next = limits.joint_inertia[i] > 0.0
-            ? state.velocity[i] + state.torque[i] / limits.joint_inertia[i] * control_period
+            ? state.velocity[i] + state.torque[i] / limits.joint_inertia[i]
+                                * virtual_joint_limit_trigger_samples * control_period
             : state.velocity[i];
         // Zero-torque passed instead of state.torque[i], recovery overriding the command
         computePredictedPositionThresholds(i, velocity_next, 0.0,
@@ -191,14 +198,31 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         const bool is_predicted = std::abs(state.velocity[i]) >= virtual_joint_limit_min_velocity
             && checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
         anomalies.joint_pos_limit_violation_predicted[i] = is_predicted;
-        // Per joint: activated when the violation is predicted, then kept active, whatever
-        // the prediction does, until the spring has brought the joint back to its anchor.
+        // Per joint: activated when the violation is predicted for trigger_samples consecutive
+        // cycles (this one included), then kept active, whatever the prediction does, until the
+        // spring has brought the joint back to its anchor.
         if (!recovery_virtual_joint_limit.isActive(i)) {
-            if (is_predicted) {
+            if (is_predicted
+                && virtual_joint_limit_predicted_count[i] + 1 >= virtual_joint_limit_trigger_samples) {
                 // Zero-torque passed instead of state.torque[i], recovery overriding the command
                 recovery_virtual_joint_limit
                     .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
                                0.0, joint_position_threshold_min, joint_position_threshold_max);
+                // Debug: the trigger inputs, once per activation, to check the predicted
+                // braking distance (limit - threshold) against the model.
+                if (recovery_virtual_joint_limit.isActive(i)) {
+                    const int side = recovery_virtual_joint_limit.getSide()[i];
+                    std::cout << "[safety] vjl trigger joint " << i << " side=" << side
+                              << " q=" << state.position[i] << " v=" << state.velocity[i]
+                              << " tau_meas=" << state.torque[i] << " v_next=" << velocity_next
+                              << " threshold=" << (side > 0 ? joint_position_threshold_max : joint_position_threshold_min)
+                              << " delta_q=" << (side > 0 ? limits.position_max[i] - joint_position_threshold_max
+                                                          : joint_position_threshold_min - limits.position_min[i])
+                              << " c=" << recovery_virtual_joint_limit.getStoppingDistanceCoefficient()
+                              << " I=" << limits.joint_inertia[i]
+                              << " k=" << recovery_virtual_joint_limit.getK()[i]
+                              << " d=" << recovery_virtual_joint_limit.getD()[i] << std::endl;
+                }
             }
         } else {
             // With damping_after_stop, a joint moving away from the limit is damped from then on
@@ -395,6 +419,12 @@ void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug)
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
     checkState(state);
+    // Consecutive predicted cycles, counted here, once per cycle: checkState() may run more
+    // than once on the same sample.
+    for (size_t i = 0; i < virtual_joint_limit_predicted_count.size(); ++i) {
+        virtual_joint_limit_predicted_count[i] = anomalies.joint_pos_limit_violation_predicted[i]
+            ? virtual_joint_limit_predicted_count[i] + 1 : 0;
+    }
     checkCommands(commands);
     // set safety state machine based on the anomalies detected
     setSafetyState();
