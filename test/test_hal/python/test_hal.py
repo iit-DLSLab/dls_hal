@@ -43,6 +43,13 @@ class TestHalApp(PeriodicAppPlugin):
             TrajectoryGenerator.TrajectoryGeneratorPubSubType(),
             TrajectoryGenerator.TrajectoryGenerator(),
         )
+        
+        self.add_command(
+            "set_torque",
+            "set the torque for a joint",
+            self._set_torque,
+            enabled=True,
+        )
 
     # commenting to use default activation check from PeriodicAppPlugin
     # def check_activation(self) -> bool:
@@ -53,6 +60,22 @@ class TestHalApp(PeriodicAppPlugin):
     #     del timestamp_ns
     #     return True
 
+    def _set_torque(self, joint_index: str, torque: str) -> bool:
+        try:
+            idx = int(joint_index.strip())
+            tau = float(torque.strip())
+        except ValueError:
+            print(f"[{APP_ID}] malformed set_torque args: {joint_index!r} {torque!r}")
+            return False
+        if not 0 <= idx < self.JOINT_COUNT or not np.isfinite(tau):
+            print(f"[{APP_ID}] invalid joint index or torque: {idx} {tau}")
+            return False
+
+        torques = np.zeros(self.JOINT_COUNT)
+        torques[idx] = tau
+        self.writer_example.data.joints_effort(self._as_double_vector(torques))
+        return True
+        
     def run(self, timestamp_ns: int) -> None:
         now = time.time()
         if now - self._last_report_time >= 1.0:
