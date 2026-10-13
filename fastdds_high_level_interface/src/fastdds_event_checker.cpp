@@ -203,18 +203,6 @@ void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInte
         event_logger_->error("Emergency stop triggered.", EventID::EMERGENCY_STOP_PRESSED);
 
     const auto& anomalies = ri.safety.anomalies;
-    if (anomalies.breaking_mechanics) {
-        std::ostringstream message;
-        message << "Mechanical stress: sustained excessive torque while outside joint position limits.";
-        const auto& trigger_torques = ri.safety.getMechanicalStressTriggerTorque();
-        for (size_t i = 0; i < trigger_torques.size(); ++i) {
-            const auto& torque = trigger_torques[i];
-            if (!torque) continue;
-            message << "\nJoint=" << jointName(ri.state, i)
-                    << ", triggering torque=" << *torque << " Nm";
-        }
-        event_logger_->error(message.str(), EventID::BREAKING_MECHANICS);
-    }
     if (anomalies.lost_references.load(std::memory_order_relaxed))
         event_logger_->error("Control reference inputs were lost",
                               EventID::MISSING_INPUT);

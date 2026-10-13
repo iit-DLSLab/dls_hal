@@ -91,8 +91,6 @@ void FastDDSHLInterface::read(GenericRobotInterface& source){
     // a controller that has not activated/connected yet.
     if (input_control_signal->hasStartedReceivingData() && !transport.areInputsReceivingData())
         source.safety.setLostReferences(true);
-    else
-        source.safety.setLostReferences(false);
     source.ref.position = input_control_signal->msg.joints_position();
     source.ref.velocity = input_control_signal->msg.joints_velocity();
     source.ref.torque = input_control_signal->msg.joints_torques();

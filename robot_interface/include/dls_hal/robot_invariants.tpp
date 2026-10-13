@@ -37,21 +37,12 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     virtual_joint_limit_min_velocity = min_velocity_node ? min_velocity_node.as<double>() : 0.3;
     if (!std::isfinite(virtual_joint_limit_min_velocity) || virtual_joint_limit_min_velocity < 0.0)
         throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_min_velocity must be finite and non-negative (rad/s)");
-    const auto slow_release_zone_node = config["robot_interface"]["safety"]["virtual_joint_limit_slow_release_zone"];
-    virtual_joint_limit_slow_release_zone = slow_release_zone_node ? slow_release_zone_node.as<double>() : 0.0;
-    if (!std::isfinite(virtual_joint_limit_slow_release_zone) || virtual_joint_limit_slow_release_zone < 0.0)
-        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_slow_release_zone must be finite and non-negative (rad)");
     const auto torque_scale_node = config["robot_interface"]["safety"]["virtual_joint_limit_torque_scale"];
     virtual_joint_limit_torque_scale = torque_scale_node ? torque_scale_node.as<double>() : 1.0;
     if (!std::isfinite(virtual_joint_limit_torque_scale) || virtual_joint_limit_torque_scale <= 0.0
         || virtual_joint_limit_torque_scale > 1.0)
         throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_torque_scale must be in (0, 1]");
-    const auto trigger_samples_node = config["robot_interface"]["safety"]["virtual_joint_limit_trigger_samples"];
-    virtual_joint_limit_trigger_samples = trigger_samples_node ? trigger_samples_node.as<int>() : 1;
-    if (virtual_joint_limit_trigger_samples < 1)
-        throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_trigger_samples must be >= 1");
     const auto n_joint = config["general"]["n_joints"].as<int>();
-    virtual_joint_limit_predicted_count.assign(n_joint, 0);
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
     anomalies.joint_vel_limit_violation.resize(n_joint, false);
@@ -79,29 +70,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
-    mechanical_stress_start_per_joint.assign(n_joint, std::nullopt);
-    auto mechanical_stress_max_torque_node = config["robot_interface"]["safety"]["mechanical_stress_max_torque"];
-    if (mechanical_stress_max_torque_node) {
-        mechanical_stress_max_torque = mechanical_stress_max_torque_node.as<double>();
-    } else {
-        mechanical_stress_max_torque = 0.0; // default value if not specified
-    }
-    // Mechanical-stress detection is disabled when exponential coefficients are absent.
-    mechanical_stress_exp_time_scale = 0.0;
-    mechanical_stress_exp_decay = 0.0;
-    const auto coefficients = config["robot_interface"]["safety"]["mechanical_stress_exp_coefficients"];
-    if (coefficients) {
-        const double a = coefficients["a"].as<double>();
-        const double b = coefficients["b"].as<double>();
-        if (!std::isfinite(a) || a <= 0.0 || !std::isfinite(b) || b < 0.0)
-            throw std::invalid_argument("Mechanical stress coefficients require finite a > 0 and b >= 0");
-        mechanical_stress_exp_time_scale = a;
-        mechanical_stress_exp_decay = b;
-    }
-    if (!std::isfinite(mechanical_stress_max_torque) || mechanical_stress_max_torque < 0.0)
-        throw std::invalid_argument("Mechanical stress torque threshold must be finite and non-negative");
-    anomalies.breaking_mechanics = false;
-    mechanical_stress_trigger_torque.assign(n_joint, std::nullopt);
+
     anomalies.lost_references.store(false, std::memory_order_relaxed);
     limits.init(config);
     
@@ -112,6 +81,19 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         limits.torque_min, limits.torque_max};
     recovery_estop.setLimits(recovery_limits);
     recovery_damping.setLimits(recovery_limits);
+    // Damping recovery gain [Nm * s / rad]: a scalar for all joints or one value per joint; default 1.
+    const auto damping_gain_node = config["robot_interface"]["safety"]["recovery_damping_gain"];
+    std::vector<double> damping_gain(n_joint, 1.0);
+    if (damping_gain_node) {
+        if (damping_gain_node.IsScalar()) {
+            damping_gain.assign(n_joint, damping_gain_node.as<double>());
+        } else {
+            damping_gain = damping_gain_node.as<std::vector<double>>();
+            if (damping_gain.size() != static_cast<size_t>(n_joint))
+                throw std::invalid_argument("robot_interface.safety.recovery_damping_gain must be a scalar or have n_joints elements");
+        }
+    }
+    recovery_damping.setDampingGains(damping_gain);
     recovery_virtual_joint_limit.setLimits(recovery_limits);
     const auto release_tolerance_node = config["robot_interface"]["safety"]["virtual_joint_limit_release_tolerance"];
     double release_tolerance = 1e-3;
@@ -120,10 +102,6 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     }
     const auto damping_after_stop_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_after_stop"];
     const bool damping_after_stop = damping_after_stop_node ? damping_after_stop_node.as<bool>() : false;
-    const auto stop_retreat_node = config["robot_interface"]["safety"]["virtual_joint_limit_stop_retreat"];
-    const double stop_retreat = stop_retreat_node ? stop_retreat_node.as<double>() : 1e-3;
-    const auto min_braking_time_node = config["robot_interface"]["safety"]["virtual_joint_limit_min_braking_time"];
-    const double min_braking_time = min_braking_time_node ? min_braking_time_node.as<double>() : 0.0;
     // Brake stiffness, set either as the damping ratio zeta in [0.5, 1] or as the stiffness scale
     // k / k(zeta = 1) = 1 / zeta^2 in [1, 4]; default 1 (critically damped).
     const auto damping_ratio_node = config["robot_interface"]["safety"]["virtual_joint_limit_damping_ratio"];
@@ -142,8 +120,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
             throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_stiffness_scale must be in [1, 4]");
         damping_ratio = 1.0 / std::sqrt(stiffness_scale);
     }
-    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio, stop_retreat,
-                                      min_braking_time);
+    recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -159,7 +136,7 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     // Ignore controller braking contribution (torque driving away from limit) for robustness.
     // Only a fraction of the torque limit is budgeted for braking: the rest is headroom
     // for model errors (inertia, velocity prediction, external torque).
-    constexpr double tau_net_eps = 1e-6; // Denominator regulation term
+    constexpr double tau_net_eps = 0.1; //1e-6; // Denominator regulation term
     const double tau_net_max = std::max(
         virtual_joint_limit_torque_scale * std::abs(limits.torque_min[i]) - std::max( torque, 0.0), tau_net_eps);
     const double tau_net_min = std::max(
@@ -167,22 +144,16 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
     // Stopping distance of the virtual joint limit whose peak torque (at the trigger) equals
     // the available torque: c * I * v^2 / tau_net, with c = 2 / e when critically damped
     // (4/e times the full-torque braking distance), smaller for a stiffer, underdamped brake.
-    // With the damping capped at d_max = I / T_min, a slow joint is not braked at full torque:
-    // its stopping distance is at least c * |v| * T_min.
-    // Plus the distance covered between the threshold crossing and the activation: up to one
-    // control period to detect it, then the trigger_samples - 1 periods that confirm it.
+    // Plus the distance covered during the up to one control period between the threshold
+    // crossing and its detection.
     const double c = recovery_virtual_joint_limit.getStoppingDistanceCoefficient();
-    const double min_braking_distance = c * std::abs(velocity) * recovery_virtual_joint_limit.getMinBrakingTime();
-    const double trigger_delay = virtual_joint_limit_trigger_samples * control_period;
     const double delta_q_max =
         velocity > 0.0
-        ? std::max(c * limits.joint_inertia[i] * velocity * velocity / tau_net_max, min_braking_distance)
-          + velocity * trigger_delay
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_max + velocity * control_period
         : 0.0;
     const double delta_q_min =
         velocity < 0.0
-        ? std::max(c * limits.joint_inertia[i] * velocity * velocity / tau_net_min, min_braking_distance)
-          - velocity * trigger_delay
+        ? c * limits.joint_inertia[i] * velocity * velocity / tau_net_min - velocity * control_period
         : 0.0;
     threshold_max = limits.position_max[i] - delta_q_max;
     threshold_min = limits.position_min[i] + delta_q_min;
@@ -191,17 +162,15 @@ void ROBOT_SAFETY_TYPE::computePredictedPositionThresholds(size_t joint_index,
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
     setFungoPressed(false);
-    anomalies.breaking_mechanics = false;
     // Check if state is within limits, and setting anomalies if necessary
     for (size_t i = 0; i < state.position.size(); ++i) {
         double joint_position_threshold_min;
         double joint_position_threshold_max;
-        // Velocity trigger_samples control periods ahead: until the trigger activates, the torque
-        // applied during each cycle (last measured) still accelerates the joint. Zero inertia
-        // disables the prediction, so it also skips this step.
+        // Velocity one control period ahead: until the trigger is detected, the torque applied
+        // during the cycle (last measured) still accelerates the joint. Zero inertia disables
+        // the prediction, so it also skips this step.
         const double velocity_next = limits.joint_inertia[i] > 0.0
-            ? state.velocity[i] + state.torque[i] / limits.joint_inertia[i]
-                                * virtual_joint_limit_trigger_samples * control_period
+            ? state.velocity[i] + state.torque[i] / limits.joint_inertia[i] * control_period
             : state.velocity[i];
         // Zero-torque passed instead of state.torque[i], recovery overriding the command
         computePredictedPositionThresholds(i, velocity_next, 0.0,
@@ -212,45 +181,21 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         const bool is_predicted = std::abs(state.velocity[i]) >= virtual_joint_limit_min_velocity
             && checkJointStateLimit(state.position[i], joint_position_threshold_min, joint_position_threshold_max);
         anomalies.joint_pos_limit_violation_predicted[i] = is_predicted;
-        // Per joint: activated when the violation is predicted for trigger_samples consecutive
-        // cycles (this one included), then kept active, whatever the prediction does, until the
-        // spring has brought the joint back to its anchor.
+        // Per joint: activated when the violation is predicted, then kept active, whatever
+        // the prediction does, until the spring has brought the joint back to its anchor.
         if (!recovery_virtual_joint_limit.isActive(i)) {
-            if (is_predicted
-                && virtual_joint_limit_predicted_count[i] + 1 >= virtual_joint_limit_trigger_samples) {
+            if (is_predicted) {
                 // Zero-torque passed instead of state.torque[i], recovery overriding the command
                 recovery_virtual_joint_limit
                     .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
                                0.0, joint_position_threshold_min, joint_position_threshold_max);
-                // Debug: the trigger inputs, once per activation, to check the predicted
-                // braking distance (limit - threshold) against the model.
-                if (recovery_virtual_joint_limit.isActive(i)) {
-                    const int side = recovery_virtual_joint_limit.getSide()[i];
-                }
             }
         } else {
-            // Once the brake has stopped it (with damping_after_stop: latched, i.e. turned back),
-            // a joint slower than min_velocity within slow_release_zone of a limit (or past it)
-            // is no longer damped: otherwise -d * v keeps turning velocity noise into torque on a
-            // joint at the limit. With damping_after_stop it is held at zero torque until the HAL
-            // restarts; otherwise it goes back to the controller.
-            const bool at_limit = state.position[i] >= limits.position_max[i] - virtual_joint_limit_slow_release_zone
-                || state.position[i] <= limits.position_min[i] + virtual_joint_limit_slow_release_zone;
-            // With damping_after_stop, a joint is damped only once the brake has stopped it and
-            // it moves back from the deepest point reached, and is never released afterwards.
-            // Otherwise it is released once back at its anchor.
-            const bool stopped = !recovery_virtual_joint_limit.isDampingAfterStop()
-                || recovery_virtual_joint_limit.isDampingOnly(i);
-            if (virtual_joint_limit_slow_release_zone > 0.0 && at_limit && stopped
-                && std::abs(state.velocity[i]) < virtual_joint_limit_min_velocity) {
-                if (recovery_virtual_joint_limit.isDampingAfterStop()) {
-                    recovery_virtual_joint_limit.holdZeroTorque(i);
-                } else {
-                    recovery_virtual_joint_limit.reset(i);
-                }
-            } else if (recovery_virtual_joint_limit.isDampingAfterStop()) {
-                recovery_virtual_joint_limit.updateDampingOnly(i, state.position[i]);
-            } else if (recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
+            // With damping_after_stop, a joint moving away from the limit is damped from then on
+            // and never released; otherwise it is released once back at its anchor.
+            recovery_virtual_joint_limit.updateDampingOnly(i, state.velocity[i]);
+            if (!recovery_virtual_joint_limit.isDampingOnly(i)
+                && recovery_virtual_joint_limit.hasReturnedToAnchor(i, state.position[i], state.velocity[i])) {
                 recovery_virtual_joint_limit.reset(i);
             }
         }
@@ -268,36 +213,9 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         if (state.motors_status_word[i] == state.const_motors_status_words.fungo_pressed) {
             setFungoPressed(true);
         }
-        checkBreakingMechanics(i, state.torque[i]);
     }
     for (size_t i = 0; i < state.battery.size(); ++i) {
         anomalies.battery_charge_low[i] = state.battery[i].charge_percentage < limits.percentage_battery_charge_min;
-    }
-}
-ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::checkBreakingMechanics(size_t joint_index, double torque) {
-    const auto now = std::chrono::steady_clock::now();
-    auto& stress_start = mechanical_stress_start_per_joint[joint_index];
-    if (mechanical_stress_exp_time_scale > 0.0 &&
-        anomalies.joint_pos_limit_violation[joint_index] &&
-        std::abs(torque) > mechanical_stress_max_torque) {
-        if (!stress_start) {
-            stress_start = now;
-        }
-        const double stress_time = std::chrono::duration<double>(now - *stress_start).count();
-        const double excess_torque = std::abs(torque) - mechanical_stress_max_torque;
-        // Use current torque: higher loads shorten the allowable continuous exposure.
-        // Keep b = 0 explicit to avoid 0 * infinity for invalid torque samples.
-        const double allowed_time = mechanical_stress_exp_decay == 0.0
-            ? mechanical_stress_exp_time_scale
-            : mechanical_stress_exp_time_scale * std::exp(-mechanical_stress_exp_decay * excess_torque);
-        if (stress_time > allowed_time) {
-            auto& trigger_torque = mechanical_stress_trigger_torque[joint_index];
-            if (!trigger_torque) trigger_torque = torque;
-            anomalies.breaking_mechanics = true;
-        }
-    } else {
-        stress_start.reset();
     }
 }
 
@@ -418,10 +336,6 @@ double ROBOT_SAFETY_TYPE::getEventsFrequency() const {
     return events_frequency;
 }
 
-ROBOT_SAFETY_TEMPLATE
-const std::vector<std::optional<double>>& ROBOT_SAFETY_TYPE::getMechanicalStressTriggerTorque() const {
-    return mechanical_stress_trigger_torque;
-}
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug) const {
@@ -440,12 +354,6 @@ void ROBOT_SAFETY_TYPE::getVirtualJointLimitDebug(VirtualJointLimitDebug& debug)
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::manageAnomalies(const TState& state, TCommands& commands) {
     checkState(state);
-    // Consecutive predicted cycles, counted here, once per cycle: checkState() may run more
-    // than once on the same sample.
-    for (size_t i = 0; i < virtual_joint_limit_predicted_count.size(); ++i) {
-        virtual_joint_limit_predicted_count[i] = anomalies.joint_pos_limit_violation_predicted[i]
-            ? virtual_joint_limit_predicted_count[i] + 1 : 0;
-    }
     checkCommands(commands);
     // set safety state machine based on the anomalies detected
     setSafetyState();
@@ -483,7 +391,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
         safety_state = SafetyState::EMERGENCY_STOP;
     }else if (recovery_virtual_joint_limit.anyActive()) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
-    }else if (anomalies.breaking_mechanics || anomalies.lost_references.load(std::memory_order_relaxed)) {
+    }else if (anomalies.lost_references.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::DAMPING;
     } else {
         safety_state = SafetyState::NOMINAL;
@@ -509,7 +417,9 @@ void ROBOT_SAFETY_TYPE::executeRecoveryMode(const TState& state, TCommands& comm
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
-    anomalies.lost_references.store(lost, std::memory_order_relaxed);
+    // Latched: once lost, references stay lost until init() (HAL restart).
+    if (lost)
+        anomalies.lost_references.store(true, std::memory_order_relaxed);
 }
 
 // RobotLowLevelControl

@@ -182,7 +182,6 @@ public:
     // event thread; it does not publish any accompanying state.
     RelaxedAtomicBool fungo_pressed;
     RelaxedAtomicBool lost_references;
-    bool breaking_mechanics{false};
 };
 
 // Per-joint snapshot of the virtual joint limit, for debugging.
@@ -216,6 +215,7 @@ public:
 
     void triggerEmergencyStop();
 
+    // Latching: true sets the anomaly, false is ignored; only init() clears it.
     void setLostReferences(bool lost);
 
     bool isEmergencyStopActive() const;
@@ -223,10 +223,6 @@ public:
     double getReferencesTimeout() const;
 
     double getEventsFrequency() const;
-
-    // Each joint's first triggering torque while breaking_mechanics is
-    // latched (see mechanical_stress_trigger_torque below).
-    const std::vector<std::optional<double>>& getMechanicalStressTriggerTorque() const;
 
     // Fills debug with the current virtual joint limit state (resized to one entry per joint).
     void getVirtualJointLimitDebug(VirtualJointLimitDebug& debug) const;
@@ -253,7 +249,6 @@ public:
 
     private:
         void setFungoPressed(bool pressed);
-        void checkBreakingMechanics(size_t joint_index, double torque);
         /**
          * @brief Position thresholds shrunk by the distance needed to brake the joint 
          *        at its current velocity with the torque left after torque_command.
@@ -275,13 +270,6 @@ public:
         void executeRecoveryMode(const TState& state, TCommands& commands);
 
         // Anomaly auxiliary variables for anomaly detection
-        // breaking_mechanics aux variables
-        double mechanical_stress_exp_time_scale;
-        double mechanical_stress_exp_decay;
-        double mechanical_stress_max_torque;
-        std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
-        // Preserve each joint's first triggering torque while breaking_mechanics is latched.
-        std::vector<std::optional<double>> mechanical_stress_trigger_torque;
         // Timeout for detecting missing required high-level input messages.
         double references_timeout; // seconds since the latest required high-level input message
         // Rate at which the high-level interface's background thread checks
@@ -291,16 +279,9 @@ public:
         double control_period; // seconds; 0 disables delay compensation
         // Below this joint speed the virtual joint limit is not activated.
         double virtual_joint_limit_min_velocity; // rad/s
-        // Within this distance of a limit (or past it), an active joint slower than
-        // virtual_joint_limit_min_velocity is released back to the controller; 0 disables.
-        double virtual_joint_limit_slow_release_zone; // rad
         // Fraction of the torque limit the virtual joint limit trigger is sized on, in (0, 1].
         // Below 1 it triggers earlier, leaving the rest as headroom for model errors.
         double virtual_joint_limit_torque_scale;
-        // Consecutive cycles a violation must be predicted before the virtual joint limit
-        // activates, so that a single noisy velocity sample cannot trigger it.
-        int virtual_joint_limit_trigger_samples;
-        std::vector<int> virtual_joint_limit_predicted_count; // consecutive predicted cycles, per joint
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

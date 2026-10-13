@@ -46,14 +46,20 @@ protected:
 
 class RecoveryDamping : public RecoveryMode {
 public:
-    // Torque is -damping_gain * measured velocity; position/velocity commands are zero.
+    // Torque is -damping_gain[i] * measured velocity; position/velocity commands are zero.
     explicit RecoveryDamping(double damping_gain = 1.0);
+
+    // Per-joint gains [Nm * s / rad]; throws if any is non-finite or negative.
+    // Joints beyond the vector size use the last gain set by the constructor.
+    void setDampingGains(const std::vector<double>& damping_gain);
+    const std::vector<double>& getDampingGains() const { return damping_gain_; }
 
 protected:
     void execute(const RobotState& state, RobotCommands& commands) override;
 
 private:
-    double damping_gain_;
+    double default_gain_;
+    std::vector<double> damping_gain_;
 };
 
 class RecoveryVirtualJointLimit : public RecoveryMode {
@@ -70,14 +76,9 @@ public:
      *        at activation) fixes d, so zeta only sets the stiffness: k = k(zeta = 1) / zeta^2.
      *        Below 1 the brake stops in a shorter distance; below 0.5 the peak torque is no longer
      *        at activation and the sizing below does not hold.
-     * @param stop_retreat [rad]: with damping_after_stop, how far a braked joint must move back
-     *        from the deepest position it reached before it is latched into damping only.
-     * @param min_braking_time [s]: T_min, caps the damping at d_max = I / T_min whatever the
-     *        trigger (slow, noisy, next to the limit), so that velocity noise, latency and inertia
-     *        errors are amplified by a bounded gain. 0 disables the cap.
      */
     void init(size_t n_joint, double release_tolerance, bool damping_after_stop = false,
-              double damping_ratio = 1.0, double stop_retreat = 1e-3, double min_braking_time = 0.0);
+              double damping_ratio = 1.0);
 
     /**
      * @brief c(zeta) in the stopping distance c * I * w^2 / tau of the brake whose peak torque
@@ -85,12 +86,6 @@ public:
      *        The trigger must use it, so that it matches the braking law.
      */
     double getStoppingDistanceCoefficient() const;
-
-    /**
-     * @brief T_min [s] of the damping cap d_max = I / T_min, 0 when disabled. With the cap the
-     *        stopping distance from w is at least c * w * T_min, which the trigger must use.
-     */
-    double getMinBrakingTime() const;
 
     /**
      * @brief Activates a joint whose limit violation is predicted: anchors the spring at the
@@ -119,27 +114,15 @@ public:
     bool anyActive() const;
 
     /**
-     * @brief With damping_after_stop, latches an active joint into damping only once it has
-     *        moved back by more than stop_retreat from the deepest position reached since its
-     *        activation (impact avoided, now moving away from the limit). Decided on position,
-     *        not on the velocity sign, so that velocity noise cannot latch a joint still moving
-     *        toward the limit. Never released: the joint stays damped until the HAL restarts.
-     *        No effect without damping_after_stop.
+     * @brief With damping_after_stop, latches an active joint into damping only once its velocity
+     *        has changed sign (impact avoided, now moving away from the limit). Never released:
+     *        the joint stays damped until the HAL restarts. No effect without damping_after_stop.
      * 
      * @param index 
-     * @param position 
+     * @param velocity 
      */
-    void updateDampingOnly(size_t index, double position);
+    void updateDampingOnly(size_t index, double velocity);
     bool isDampingOnly(size_t index) const;
-
-    /**
-     * @brief Zero torque on a joint latched into damping only (no effect otherwise): the joint
-     *        stays active, overriding the controller with zero torque, until the HAL restarts.
-     * 
-     * @param index 
-     */
-    void holdZeroTorque(size_t index);
-    bool isDampingAfterStop() const;
     const std::vector<bool>& getDampingOnly() const;
 
     /**
@@ -193,13 +176,10 @@ private:
     std::vector<double> q_max_trigger_;
     std::vector<int> side_; // +1 braking toward position_max, -1 toward position_min, 0 inactive
     std::vector<bool> damping_only_; // latched: damped with d_ only, never released
-    std::vector<double> peak_position_; // [rad] deepest position toward the limit since activation, NaN when inactive
     std::vector<double> tau_; // [Nm] computed by the last execute(), NaN when not overridden
     double release_tolerance_ = 0.0;
     bool damping_after_stop_ = false;
-    double stop_retreat_ = 1e-3;
     double damping_ratio_ = 1.0;
-    double min_braking_time_ = 0.0; // [s] T_min, d <= I / T_min; 0 disables the cap
     // Penetration from velocity w: w * sqrt(I / k) * penetration_factor_ (1 / e at zeta = 1).
     double penetration_factor_ = 1.0 / M_E;
     // Peak of the step response to a constant push tau, in units of tau / k (1 at zeta = 1).

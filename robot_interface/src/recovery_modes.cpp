@@ -73,22 +73,31 @@ void RecoveryESTOP::execute(const RobotState&, RobotCommands& commands) {
 }
 
 RecoveryDamping::RecoveryDamping(double damping_gain)
-    : damping_gain_(damping_gain) {
-    if (!std::isfinite(damping_gain_) || damping_gain_ < 0.0) {
+    : default_gain_(damping_gain) {
+    if (!std::isfinite(default_gain_) || default_gain_ < 0.0) {
         throw std::invalid_argument("Recovery damping gain must be finite and non-negative");
     }
+}
+
+void RecoveryDamping::setDampingGains(const std::vector<double>& damping_gain) {
+    for (std::size_t i = 0; i < damping_gain.size(); ++i) {
+        if (!std::isfinite(damping_gain[i]) || damping_gain[i] < 0.0) {
+            throw std::invalid_argument("Recovery damping gain must be finite and non-negative at joint " + std::to_string(i));
+        }
+    }
+    damping_gain_ = damping_gain;
 }
 
 void RecoveryDamping::execute(const RobotState& state, RobotCommands& commands) {
     zeroCommands(commands);
     const auto joint_count = std::min(state.velocity.size(), commands.torque.size());
     for (std::size_t i = 0; i < joint_count; ++i) {
-        commands.torque[i] = -damping_gain_ * state.velocity[i];
+        commands.torque[i] = -damping_gain_[i] * state.velocity[i];
     }
 }
 
 void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, bool damping_after_stop,
-                                     double damping_ratio, double stop_retreat, double min_braking_time){
+                                     double damping_ratio){
     if (limits_.position_min.size() != n_joint || limits_.position_max.size() != n_joint) {
         throw std::invalid_argument("Virtual joint limit: setLimits() must provide one position limit per joint before init()");
     }
@@ -98,25 +107,16 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     if (!std::isfinite(damping_ratio) || damping_ratio < 0.5 || damping_ratio > 1.0) {
         throw std::invalid_argument("Virtual joint limit damping ratio must be in [0.5, 1]");
     }
-    if (!std::isfinite(stop_retreat) || stop_retreat < 0.0) {
-        throw std::invalid_argument("Virtual joint limit stop retreat must be finite and non-negative");
-    }
-    if (!std::isfinite(min_braking_time) || min_braking_time < 0.0) {
-        throw std::invalid_argument("Virtual joint limit min braking time must be finite and non-negative");
-    }
     k_.assign(n_joint, 0.0);
     d_.assign(n_joint, 0.0);
     q_min_trigger_ = limits_.position_min;
     q_max_trigger_ = limits_.position_max;
     side_.assign(n_joint, 0);
     damping_only_.assign(n_joint, false);
-    peak_position_.assign(n_joint, std::numeric_limits<double>::quiet_NaN());
     tau_.assign(n_joint, std::numeric_limits<double>::quiet_NaN());
     release_tolerance_ = release_tolerance;
     damping_after_stop_ = damping_after_stop;
     damping_ratio_ = damping_ratio;
-    stop_retreat_ = stop_retreat;
-    min_braking_time_ = min_braking_time;
     // Underdamped (zeta < 1): x(t) = w / w_d * exp(-zeta * w_n * t) * sin(w_d * t), deepest at
     // w_d * t = arccos(zeta), i.e. w / w_n * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)).
     // The constant-push step response overshoots tau / k by exp(-pi * zeta / sqrt(1 - zeta^2)).
@@ -137,10 +137,6 @@ double RecoveryVirtualJointLimit::getStoppingDistanceCoefficient() const {
     return 2.0 * damping_ratio_ * penetration_factor_;
 }
 
-double RecoveryVirtualJointLimit::getMinBrakingTime() const {
-    return min_braking_time_;
-}
-
 void RecoveryVirtualJointLimit::reset(size_t index){
     if (index >= k_.size() || index >= d_.size()
         || index >= q_min_trigger_.size() || index >= q_max_trigger_.size()) {
@@ -152,7 +148,6 @@ void RecoveryVirtualJointLimit::reset(size_t index){
     q_max_trigger_[index] = limits_.position_max[index];
     side_[index] = 0;
     damping_only_[index] = false;
-    peak_position_[index] = std::numeric_limits<double>::quiet_NaN();
     tau_[index] = std::numeric_limits<double>::quiet_NaN();
 }
 
@@ -164,36 +159,19 @@ bool RecoveryVirtualJointLimit::anyActive() const {
     return std::any_of(side_.begin(), side_.end(), [](int side) { return side != 0; });
 }
 
-void RecoveryVirtualJointLimit::updateDampingOnly(size_t index, double position) {
-    if (!damping_after_stop_ || !isActive(index) || damping_only_[index] || !std::isfinite(position)) {
+void RecoveryVirtualJointLimit::updateDampingOnly(size_t index, double velocity) {
+    if (!damping_after_stop_ || !isActive(index) || damping_only_[index]) {
         return;
     }
-    // Braking moves the joint toward the limit (side * position increasing); once it has moved
-    // back from the deepest point by more than stop_retreat_, it stopped short of the limit and
-    // now moves away from it. The anchor is not required: the joint may stop past it.
-    double& peak = peak_position_[index];
-    if (!std::isfinite(peak) || side_[index] * (position - peak) > 0.0) {
-        peak = position;
-    } else if (side_[index] * (peak - position) > stop_retreat_) {
+    // Braking moves the joint toward the limit (side * velocity > 0); a sign change means it
+    // stopped short of the limit and now moves away from it.
+    if (side_[index] * velocity < 0.0) {
         damping_only_[index] = true;
     }
 }
 
 bool RecoveryVirtualJointLimit::isDampingOnly(size_t index) const {
     return index < damping_only_.size() && damping_only_[index];
-}
-
-void RecoveryVirtualJointLimit::holdZeroTorque(size_t index) {
-    if (!isDampingOnly(index)) {
-        return;
-    }
-    // Damping only with zero gains: execute() then commands zero torque on this joint.
-    k_[index] = 0.0;
-    d_[index] = 0.0;
-}
-
-bool RecoveryVirtualJointLimit::isDampingAfterStop() const {
-    return damping_after_stop_;
 }
 
 const std::vector<bool>& RecoveryVirtualJointLimit::getDampingOnly() const {
@@ -265,7 +243,7 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     // threshold itself can lie beyond the opposite limit when the torque saturates.
     const double anchor = std::clamp(position, q_min, q_max);
 
-    constexpr double dq_eps = 1e-6; // Denominator regulation term
+    constexpr double dq_eps = 0.1; //1e-6; // Denominator regulation term
     const double dq_remaining = std::max(upper_limit ? q_max - anchor : anchor - q_min, dq_eps);
 
     const double tau_push = std::max(toward_sign * torque, 0.0);
@@ -307,12 +285,6 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
             (w_term + std::sqrt(w_term * w_term + 4.0 * dq_remaining * push_term))
             / (2.0 * dq_remaining);
         sqrt_k = std::min(sqrt_k_distance, sqrt_k_max);
-        // d_max = I / T_min caps the gain itself: k_max only bounds the torque for the velocity
-        // measured at the trigger (d <= tau / w), unbounded for a slow or noisy trigger. A joint
-        // triggered too close to the limit for d_max overshoots it at low speed instead.
-        if (min_braking_time_ > 0.0) {
-            sqrt_k = std::min(sqrt_k, std::sqrt(inertia) / (2.0 * damping_ratio_ * min_braking_time_));
-        }
     }
 
     const double new_k = sqrt_k * sqrt_k;
@@ -328,7 +300,6 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     q_max_trigger_[index] = upper_limit ? anchor : q_max;
     q_min_trigger_[index] = upper_limit ? q_min : anchor;
     side_[index] = upper_limit ? 1 : -1;
-    peak_position_[index] = position;
 }
 
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
