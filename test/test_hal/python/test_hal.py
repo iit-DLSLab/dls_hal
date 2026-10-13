@@ -50,7 +50,7 @@ class TestHalApp(PeriodicAppPlugin):
         
         self.add_command(
             "set_torque",
-            "Set joint torques: <joint_index>[,<joint_index>...]:<torque>[,<torque>...]",
+            "Set joint torques: <joint_index>[;<joint_index>...]:<torque>[;<torque>...]",
             self._split_args(self._set_torque, 2),
             enabled=True,
         )
@@ -89,8 +89,9 @@ class TestHalApp(PeriodicAppPlugin):
 
     def _set_torque(self, joint_index: str, torque: str) -> bool:
         try:
-            indices = [int(value.strip()) for value in joint_index.split(",")]
-            values = [float(value.strip()) for value in torque.split(",")]
+            # Commas separate command arguments in the DDS transport.
+            indices = [int(value.strip()) for value in joint_index.split(";")]
+            values = [float(value.strip()) for value in torque.split(";")]
         except ValueError:
             print(f"[{APP_ID}] malformed set_torque args: {joint_index!r} {torque!r}")
             return False
