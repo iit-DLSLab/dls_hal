@@ -113,6 +113,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkInvalidValueEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
+    checkVirtualEndstopEvents(ri);
     checkSafetyStateEvents(ri);
 }
 
@@ -219,6 +220,32 @@ void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInte
                               EventID::MISSING_INPUT);
 }
 
+// The virtual endstop overrides the high-level command of every joint it is
+// braking, from the predicted violation until the joint is released.
+void FastDDSEventChecker::checkVirtualEndstopEvents(const GenericRobotInterface& ri)
+{
+    VirtualJointLimitDebug endstop;
+    ri.safety.getVirtualJointLimitDebug(endstop);
+
+    std::vector<bool> active(endstop.side.size(), false);
+    for (size_t i = 0; i < active.size(); ++i) active[i] = endstop.side[i] != 0;
+
+    const auto& limits = ri.safety.getLimits();
+    const auto message = collectJointDetails(ri.state, active, [&](std::ostream& out, size_t i) {
+        const bool at_max = endstop.side[i] > 0;
+        out << "position=" << ri.state.position.at(i) << " rad"
+            << ", velocity=" << ri.state.velocity.at(i) << " rad/s"
+            << ", braking toward " << (at_max ? "position_max=" : "position_min=")
+            << (at_max ? limits.position_max.at(i) : limits.position_min.at(i)) << " rad"
+            << ", anchor=" << endstop.anchor.at(i) << " rad"
+            << ", torque=" << endstop.torque.at(i) << " Nm";
+        if (endstop.damping_only.at(i)) out << ", damping only";
+    });
+    if (!message.empty())
+        event_logger_->warning("Virtual endstop enforcing, high-level command overridden:" + message,
+                               EventID::VIRTUAL_ENDSTOP_ENFORCING);
+}
+
 void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri)
 {
     using SafetyState = decltype(ri.safety)::SafetyState;
@@ -233,6 +260,9 @@ void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri
             break;
         case SafetyState::DAMPING:
             state_name = "DAMPING";
+            break;
+        case SafetyState::VIRTUAL_ENDSTOP_ENFORCING:
+            state_name = "VIRTUAL_ENDSTOP_ENFORCING";
             break;
         default:
             break;
