@@ -154,100 +154,9 @@ The base type does not encode physical units, coordinate frames, timestamps, or 
 | `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
 | `battery_charge_low` | One boolean | `battery_status` is below `percentage_battery_charge_min` |
 
-State-limit flags are refreshed by `checkState()`. Mechanical stress is an exception: `breaking_mechanics` and the triggering torques remain latched until safety initialization clears them. All per-joint state, limit, and anomaly vectors must have the configured `n_joints` length.
+State-limit flags are refreshed by `checkState()`. All per-joint state, limit, and anomaly vectors must have the configured `n_joints` length.
 
-`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop and the fungo button take priority. Missing references and mechanical stress select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
-
-#### Mechanical stress: exponential exposure limit
-
-Mechanical-stress detection runs independently for each joint in `RobotSafety::checkState()`, including when called through `GenericRobotInterface`. A joint's exposure timer runs only while both conditions hold:
-
-- Measured position is strictly below `position_min` or above `position_max`. Position exactly at either limit is permitted.
-- Absolute measured torque is strictly greater than `mechanical_stress_max_torque`. Torque at or below this threshold does not start or advance mechanical-stress timing.
-
-The allowable continuous exposure time is:
-
-```text
-t_allowed = a * exp(-b * (abs(torque) - mechanical_stress_max_torque))
-```
-
-The detector uses the **current measured torque** at each check. Increasing torque shortens the deadline; decreasing torque above the threshold lengthens it. This is an elapsed-time comparison, not an integral of accumulated stress. Each timer uses `std::chrono::steady_clock` wall time, including in simulation.
-
-The timer resets whenever position returns within its limits or torque returns to/below the threshold. Once elapsed time exceeds `t_allowed`, `breaking_mechanics` is latched and damping recovery is selected unless a higher-priority recovery applies. This threshold is separate from the ordinary `torque_min`/`torque_max` limits.
-
-Add these settings under `robot_interface.safety` in `interface_config.yaml`, alongside the joint limits:
-
-```yaml
-robot_interface:
-  safety:
-    mechanical_stress_max_torque: 60.0 # Nm
-    mechanical_stress_exp_coefficients:
-      a: 2.0   # seconds; allowed time just above the torque threshold
-      b: 0.02  # 1/Nm; rate at which allowed time decreases with torque
-```
-
-| Parameter | Meaning | Accepted values |
-| --- | --- | --- |
-| `mechanical_stress_max_torque` | Torque magnitude above which timing is eligible | Finite, non-negative; defaults to 0 Nm if omitted |
-| `a` | Exponential time scale | Finite and strictly positive, in seconds |
-| `b` | Exponential decay coefficient | Finite and non-negative, in 1/Nm; zero gives a constant `a`-second allowance |
-
-Both coefficients are required when `mechanical_stress_exp_coefficients` is present. Omitting that block disables mechanical-stress detection. The old `mechanical_stress_max_time` setting is no longer used.
-
-For the example configuration, provided position is outside its limits:
-
-| Torque magnitude | Allowed continuous exposure |
-| ---: | ---: |
-| ≤ 60 Nm | Timing inactive |
-| 80 Nm | 1.34 s |
-| 100 Nm | 0.90 s |
-| 120 Nm | 0.60 s |
-| 160 Nm | 0.27 s |
-
-`FastDDSHLInterface::writeEvents()` captures a snapshot of the anomalies each control cycle; a dedicated event thread, running at `robot_interface.events_frequency` Hz (independent of the control loop; see below), consumes the latest snapshot and drives `FastDDSEventChecker`, which publishes one `BREAKING_MECHANICS` error containing **all joints that have triggered**, with each joint's first triggering torque in Nm. Samples are stored in `anomalies.mechanical_stress_trigger_torque`, indexed by joint. Additional joints can be recorded after recovery begins; existing samples are preserved. Names come from `state.names`, with `joint[index]` as a fallback.
-
-Returning within limits resets the exposure timer but does **not** clear a latched fault or its recorded torque. Repeated notifications therefore describe recorded triggers, not necessarily current torque or currently out-of-limit joints. `RobotSafety::init()` clears the latch, samples, and timers. Notification throttling follows the configured `AppLogger` behavior.
-
-##### Plotting the curve in Python
-
-Install `numpy` and `matplotlib`, then run the following function with the same coefficients and torque threshold as the YAML configuration. The shaded region means timing is inactive, not that the allowed time is zero.
-
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-
-
-def plot_mechanical_stress_curve(a=2.0, b=0.02, threshold=60.0,
-                                max_torque=200.0):
-    """Plot allowed exposure time while outside joint position limits."""
-    if (not np.isfinite([a, b, threshold, max_torque]).all()
-            or a <= 0 or b < 0 or threshold < 0 or max_torque <= threshold):
-        raise ValueError("Require finite a > 0, b >= 0, and max_torque > threshold >= 0.")
-
-    torque = np.linspace(threshold, max_torque, 501)[1:]
-    allowed_time = a * np.exp(-b * (torque - threshold))
-
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.axvspan(0, threshold, color="green", alpha=0.12,
-               label="No mechanical-stress timing")
-    ax.axvline(threshold, color="gray", linestyle="--")
-    ax.plot(torque, allowed_time, label="Exponential exposure limit")
-    ax.set(
-        xlabel="Torque magnitude [Nm]",
-        ylabel="Allowed continuous exposure [s]",
-        title="Mechanical stress — position outside limits",
-        xlim=(0, max_torque),
-        ylim=(0, a * 1.1),
-    )
-    ax.grid(alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-    plt.show()
-    return ax
-
-
-plot_mechanical_stress_curve()
-```
+`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop and the fungo button take priority. Missing references select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
 
 #### `RobotRef`: desired behavior
 
@@ -335,10 +244,11 @@ Data leaving the HAL:
 
 `check()` succeeds only when transport inputs are receiving data and outputs are unique.
 
-`read()` also updates `safety.anomalies.references_not_received` from
-`transport.areInputsReceivingData()` on every cycle. The flag is set when any
-required input has never received a sample or its last sample has timed out,
-and clears automatically when all required inputs resume. Configure the maximum
+`read()` also updates `safety.anomalies.lost_references` from
+`transport.areInputsReceivingData()` on every cycle. Once the control signal has
+been received at least once, the flag is set when any required input times out.
+It is latched: it stays set when the inputs resume, and only `init()` (HAL
+restart) clears it. Configure the maximum
 message age in the YAML passed to `FastDDSHLInterface::init()`:
 
 ```yaml
@@ -525,3 +435,7 @@ if __name__ == "__main__":
 The robot-interface test constructs a `QuadrupedInterface`, loads the example configuration, verifies vector sizes and basic access, and calls `computeCommands()`.
 
 add info specifically for generic robot interface and fastdddshlinterface
+
+### [Virtual joint limit recovery procedure](docs/virtual_joint_limit.md)
+
+Recovery mode specifically designed for avoiding hittinh endstop with high angular velocity and provide robustness in a test setup. 

@@ -118,13 +118,14 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkInvalidValueEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
+    checkVirtualEndstopEvents(ri);
     checkSafetyStateEvents(ri);
 }
 
 void FastDDSEventChecker::checkJointLimitEvents(const GenericRobotInterface& ri)
 {
     const auto* state = &ri.state;
-    const auto* limits = &ri.safety.limits;
+    const auto* limits = &ri.safety.getLimits();
     const auto* anomalies = &ri.safety.anomalies;
 
     logJointLimit(*event_logger_, *state, anomalies->joint_pos_limit_violation,
@@ -182,7 +183,7 @@ void FastDDSEventChecker::checkInvalidValueEvents(const GenericRobotInterface& r
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)
 {
     const auto* state = &ri.state;
-    const auto* limits = &ri.safety.limits;
+    const auto* limits = &ri.safety.getLimits();
     const auto* anomalies = &ri.safety.anomalies;
 
     std::ostringstream batteries;
@@ -207,21 +208,35 @@ void FastDDSEventChecker::checkEmergencyAndRecoveryEvents(const GenericRobotInte
         event_logger_->error("Emergency stop triggered.", EventID::EMERGENCY_STOP_PRESSED);
 
     const auto& anomalies = ri.safety.anomalies;
-    if (anomalies.breaking_mechanics) {
-        std::ostringstream message;
-        message << "Mechanical stress: sustained excessive torque while outside joint position limits.";
-        const auto& trigger_torques = ri.safety.getMechanicalStressTriggerTorque();
-        for (size_t i = 0; i < trigger_torques.size(); ++i) {
-            const auto& torque = trigger_torques[i];
-            if (!torque) continue;
-            message << "\nJoint=" << jointName(ri.state, i)
-                    << ", triggering torque=" << *torque << " Nm";
-        }
-        event_logger_->error(message.str(), EventID::BREAKING_MECHANICS);
-    }
     if (anomalies.lost_references.load(std::memory_order_relaxed))
         event_logger_->error("Control reference inputs were lost",
                               EventID::MISSING_INPUT);
+}
+
+// The virtual endstop overrides the high-level command of every joint it is
+// braking, from the predicted violation until the joint is released.
+void FastDDSEventChecker::checkVirtualEndstopEvents(const GenericRobotInterface& ri)
+{
+    VirtualJointLimitDebug endstop;
+    ri.safety.getVirtualJointLimitDebug(endstop);
+
+    std::vector<bool> active(endstop.side.size(), false);
+    for (size_t i = 0; i < active.size(); ++i) active[i] = endstop.side[i] != 0;
+
+    const auto& limits = ri.safety.getLimits();
+    const auto message = collectJointDetails(ri.state, active, [&](std::ostream& out, size_t i) {
+        const bool at_max = endstop.side[i] > 0;
+        out << "position=" << ri.state.position.at(i) << " rad"
+            << ", velocity=" << ri.state.velocity.at(i) << " rad/s"
+            << ", braking toward " << (at_max ? "position_max=" : "position_min=")
+            << (at_max ? limits.position_max.at(i) : limits.position_min.at(i)) << " rad"
+            << ", anchor=" << endstop.anchor.at(i) << " rad"
+            << ", torque=" << endstop.torque.at(i) << " Nm";
+        if (endstop.damping_only.at(i)) out << ", damping only";
+    });
+    if (!message.empty())
+        event_logger_->warning("Virtual endstop enforcing, high-level command overridden:" + message,
+                               EventID::VIRTUAL_ENDSTOP_ENFORCING);
 }
 
 void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri)
@@ -238,6 +253,9 @@ void FastDDSEventChecker::checkSafetyStateEvents(const GenericRobotInterface& ri
             break;
         case SafetyState::DAMPING:
             state_name = "DAMPING";
+            break;
+        case SafetyState::VIRTUAL_ENDSTOP_ENFORCING:
+            state_name = "VIRTUAL_ENDSTOP_ENFORCING";
             break;
         default:
             break;

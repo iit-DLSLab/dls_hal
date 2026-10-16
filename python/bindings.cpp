@@ -138,8 +138,8 @@ NB_MODULE(dls_hal, m) {
 
     nb::class_<RobotLimits>(m, "RobotLimits")
         .def(nb::init<>())
-        .def_rw("position_min", &RobotLimits::position_min)
-        .def_rw("position_max", &RobotLimits::position_max)
+        .def_rw("position_min_with_margin", &RobotLimits::position_min)
+        .def_rw("position_max_with_margin", &RobotLimits::position_max)
         .def_rw("velocity_max", &RobotLimits::velocity_max)
         .def_rw("torque_max", &RobotLimits::torque_max)
         .def_rw("current_max", &RobotLimits::current_max)
@@ -188,7 +188,7 @@ NB_MODULE(dls_hal, m) {
             })
         // The atomic flag makes RobotAnomalies non-copyable; expose it by reference.
         .def_ro("anomalies", &GenericSafety::anomalies)
-        .def_rw("limits", &GenericSafety::limits);
+        .def_prop_ro("limits", &GenericSafety::getLimits);
 
     nb::enum_<GenericLowLevelControl::CONTROL_MODE>(m, "ControlMode")
         .value("POSITION_CONTROL",

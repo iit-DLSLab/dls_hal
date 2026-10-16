@@ -45,8 +45,8 @@ robot_interface:
   safety:
     mechanical_stress_max_torque: 30.0
     limits:
-      position_min: [-1.0, -2.0, -3.0]
-      position_max: [1.0, 2.0, 3.0]
+      position_min_with_margin: [-1.0, -2.0, -3.0]
+      position_max_with_margin: [1.0, 2.0, 3.0]
       velocity_max: [10.0, 20.0, 30.0]
       torque_max: [40.0, 50.0, 60.0]
       current_max: [5.0, 6.0, 7.0]
@@ -145,7 +145,6 @@ protected:
         EXPECT_FALSE(safety.isFungoPressed());
         EXPECT_FALSE(safety.isEmergencyStopActive());
         EXPECT_FALSE(anomalies().lost_references.load());
-        EXPECT_FALSE(anomalies().breaking_mechanics);
     }
 
     YAML::Node config;
@@ -363,122 +362,6 @@ TEST_F(RobotSafetyTest, fungo_pressed_NotRaisedByOtherStatusWords)
     EXPECT_FALSE(safety.isFungoPressed());
 }
 
-// --- Mechanical stress (breaking_mechanics) ---------------------------------
-//
-// Raised when a joint is outside its position limits while |torque| exceeds
-// mechanical_stress_max_torque (30 Nm here) for longer than
-// a * exp(-b * (|torque| - max_torque)) seconds.
-
-TEST_F(RobotSafetyTest, breaking_mechanics_AfterSustainedStress)
-{
-    enableMechanicalStress(/*a=*/0.05, /*b=*/0.0);  // 50 ms window
-    state.position[1] = 2.5;  // outside [-2, 2]
-    state.torque[1] = 45.0;   // > 30 Nm, still within torque_max
-
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics) << "must not trigger instantly";
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(80));
-    safety.checkState(state);
-    EXPECT_TRUE(anomalies().breaking_mechanics);
-
-    const auto& trigger = safety.getMechanicalStressTriggerTorque();
-    EXPECT_FALSE(trigger[0].has_value());
-    ASSERT_TRUE(trigger[1].has_value());
-    EXPECT_DOUBLE_EQ(*trigger[1], 45.0);
-    EXPECT_FALSE(trigger[2].has_value());
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_HigherTorqueShortensWindow)
-{
-    // 15 Nm excess with b = 10 gives a window of 10 * e^-150 s, i.e. ~0.
-    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
-    state.position[0] = -1.5;  // below min, negative torque: |torque| is used
-    state.torque[0] = -45.0;
-
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    safety.checkState(state);
-    EXPECT_TRUE(anomalies().breaking_mechanics);
-    ASSERT_TRUE(safety.getMechanicalStressTriggerTorque()[0].has_value());
-    EXPECT_DOUBLE_EQ(*safety.getMechanicalStressTriggerTorque()[0], -45.0);
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_NotRaisedInsidePositionLimits)
-{
-    enableMechanicalStress(/*a=*/0.01, /*b=*/0.0);
-    state.torque[1] = 45.0;  // high torque, but position nominal
-
-    safety.checkState(state);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics);
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_NotRaisedBelowTorqueThreshold)
-{
-    enableMechanicalStress(/*a=*/0.01, /*b=*/0.0);
-    state.position[1] = 2.5;
-    state.torque[1] = 29.0;  // below 30 Nm
-
-    safety.checkState(state);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics);
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_DisabledWithoutCoefficients)
-{
-    // Default config has no mechanical_stress_exp_coefficients.
-    state.position[1] = 2.5;
-    state.torque[1] = 45.0;
-
-    safety.checkState(state);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics);
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_TimerRestartsWhenStressIsInterrupted)
-{
-    using std::chrono::milliseconds;
-    enableMechanicalStress(/*a=*/0.2, /*b=*/0.0);  // 200 ms window
-    state.position[1] = 2.5;
-    state.torque[1] = 45.0;
-
-    safety.checkState(state);                     // stress starts
-    std::this_thread::sleep_for(milliseconds(120));
-    state.position[1] = 0.0;
-    safety.checkState(state);                     // interrupted: timer reset
-    state.position[1] = 2.5;
-    safety.checkState(state);                     // stress restarts
-    std::this_thread::sleep_for(milliseconds(120));
-    safety.checkState(state);
-    // 240 ms in total, but only ~120 ms since the restart.
-    EXPECT_FALSE(anomalies().breaking_mechanics);
-}
-
-TEST_F(RobotSafetyTest, breaking_mechanics_ClearsButKeepsFirstTriggerTorque)
-{
-    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
-    state.position[1] = 2.5;
-    state.torque[1] = 45.0;
-    safety.checkState(state);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    safety.checkState(state);
-    ASSERT_TRUE(anomalies().breaking_mechanics);
-
-    state.torque[1] = 48.0;  // still stressed, higher torque
-    safety.checkState(state);
-    EXPECT_TRUE(anomalies().breaking_mechanics);
-    EXPECT_DOUBLE_EQ(*safety.getMechanicalStressTriggerTorque()[1], 45.0)
-        << "first triggering torque must be preserved";
-
-    setNominal();
-    safety.checkState(state);
-    EXPECT_FALSE(anomalies().breaking_mechanics) << "per-cycle flag must clear";
-}
 
 // --- Command clamping -------------------------------------------------------
 
@@ -579,8 +462,10 @@ TEST_F(RobotSafetyTest, UnknownControlModeChecksEveryCommand)
 // clamped on every cycle of EMERGENCY_STOP/DAMPING.
 TEST_F(RobotSafetyTest, RecoveryZeroesRaiseNoClampingInImpedanceMode)
 {
-    safety.limits.position_min[2] = -3.0;
-    safety.limits.position_max[2] = -1.0;  // knee-like range, excludes 0
+    // Knee-like range for j2, excludes 0
+    config["robot_interface"]["safety"]["limits"]["position_min_with_margin"][2] = -3.0;
+    config["robot_interface"]["safety"]["limits"]["position_max_with_margin"][2] = -1.0;
+    init();
     safety.triggerEmergencyStop();
     for (int cycle = 0; cycle < 3; ++cycle) {
         safety.manageAnomalies(state, commands, CONTROL_MODE::IMPEDANCE_CONTROL);
@@ -669,7 +554,10 @@ TEST_F(RobotSafetyTest, lost_references)
 {
     safety.setLostReferences(true);
     EXPECT_TRUE(anomalies().lost_references.load());
+    // Latched: false is ignored, only init() clears it.
     safety.setLostReferences(false);
+    EXPECT_TRUE(anomalies().lost_references.load());
+    init();
     EXPECT_FALSE(anomalies().lost_references.load());
 }
 
@@ -710,18 +598,6 @@ TEST_F(RobotSafetyTest, SafetyState_LostReferencesEntersDamping)
     EXPECT_EQ(commands.torque, (std::vector<double>{-1.0, -2.0, -3.0}));
     EXPECT_EQ(commands.position, std::vector<double>(3, 0.0));
     EXPECT_EQ(commands.velocity, std::vector<double>(3, 0.0));
-}
-
-TEST_F(RobotSafetyTest, SafetyState_BreakingMechanicsEntersDamping)
-{
-    enableMechanicalStress(/*a=*/10.0, /*b=*/10.0);
-    state.position[1] = 2.5;
-    state.torque[1] = 45.0;
-    safety.manageAnomalies(state, commands, kMode);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    safety.manageAnomalies(state, commands, kMode);
-    ASSERT_TRUE(anomalies().breaking_mechanics);
-    EXPECT_EQ(safety.getSafetyState(), SafetyState::DAMPING);
 }
 
 TEST_F(RobotSafetyTest, SafetyState_EmergencyStopHasPriorityOverDamping)

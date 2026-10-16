@@ -59,6 +59,8 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     dls::topics::battery_status);
     output_hal_commands_feedback = this->transport.template buildOutput<dls2_interface::msg::ControlSignal>(
     dls::topics::hal_commands_feedback);
+    output_hal_safety_debug = transport.buildOutput<dls2_interface::msg::HalSafetyDebug>(
+    dls::topics::hal_safety_debug);
 
     // init inputs
     input_control_signal->msg.joints_position().resize(source.ref.position.size(), 0.0);
@@ -68,6 +70,8 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     input_control_signal->msg.kd().resize(source.ref.kd.size(), 0.0);
     input_control_signal->msg.control_mode() = source.ref.control_mode;
     //init outputs
+    output_blind_state->msg.joints_name().resize(source.state.names.size(), "");
+
     output_blind_state->msg.joints_position().resize(source.state.position.size(), 0.0);
     output_blind_state->msg.joints_velocity().resize(source.state.velocity.size(), 0.0);
     output_blind_state->msg.joints_acceleration().resize(source.state.acceleration.size(), 0.0);
@@ -76,6 +80,8 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
     output_blind_state->msg.motors_current().resize(source.state.motors_current.size(), 0.0);
     output_blind_state->msg.motors_status_word().resize(source.state.motors_status_word.size(), 0);
+    output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
+
     output_hal_commands_feedback->msg = input_control_signal->msg;
 
     // DDS reading/publishing runs in its own thread, decoupled from the HAL's
@@ -177,6 +183,7 @@ template <typename RI>
 void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     const auto& state = source.state;
     // fill in blind state
+    output_blind_state->msg.joints_name() = source.state.names;
     output_blind_state->msg.joints_position() = state.position;
     output_blind_state->msg.joints_velocity() = state.velocity;
     output_blind_state->msg.joints_acceleration() = state.acceleration;
@@ -185,6 +192,8 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     output_blind_state->msg.feet_contact() = state.contacts;
     output_blind_state->msg.motors_current() = state.motors_current;
     output_blind_state->msg.motors_status_word() = state.motors_status_word;
+    output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
+
     // fill in imu state
     for(size_t i = 0; i < state.imu.size(); ++i){
         output_imu->msg.frame_id() = state.imu[i].frame_id;
@@ -213,12 +222,26 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     output_hal_commands_feedback->msg.kp() = source.ref.kp;
     output_hal_commands_feedback->msg.kd() = source.ref.kd;
 
+    // publish hal safety debug
+    source.safety.getVirtualJointLimitDebug(virtual_joint_limit_debug_);
+    auto& safety_debug = output_hal_safety_debug->msg;
+    safety_debug.safety_state() = static_cast<std::uint8_t>(source.safety.getSafetyState());
+    safety_debug.joint_pos_limit_violation_predicted() = virtual_joint_limit_debug_.predicted;
+    safety_debug.virtual_joint_limit_side().assign(virtual_joint_limit_debug_.side.begin(),
+                                                   virtual_joint_limit_debug_.side.end());
+    safety_debug.virtual_joint_limit_anchor() = virtual_joint_limit_debug_.anchor;
+    safety_debug.virtual_joint_limit_k() = virtual_joint_limit_debug_.k;
+    safety_debug.virtual_joint_limit_d() = virtual_joint_limit_debug_.d;
+    safety_debug.virtual_joint_limit_damping_only() = virtual_joint_limit_debug_.damping_only;
+    safety_debug.virtual_joint_limit_torque() = virtual_joint_limit_debug_.torque;
+
     // Publish only this class's outputs rather than transport.write(): derived
     // interfaces may own further outputs that they publish from their own thread.
     output_blind_state->publish();
     output_imu->publish();
     output_battery_status->publish();
     output_hal_commands_feedback->publish();
+    output_hal_safety_debug->publish();
 }
 
 template <typename RI>

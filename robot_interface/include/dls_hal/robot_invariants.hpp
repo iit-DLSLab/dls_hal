@@ -135,6 +135,7 @@ public:
     std::vector<double> current_max;
     std::vector<double> motor_temperature_min;
     std::vector<double> motor_temperature_max;
+    std::vector<double> joint_inertia;
     double percentage_battery_charge_min;
 };
 
@@ -142,6 +143,7 @@ class RobotAnomalies{
 public:
     
     std::vector<bool> joint_pos_limit_violation;
+    std::vector<bool> joint_pos_limit_violation_predicted;
     std::vector<bool> joint_vel_limit_violation;
     std::vector<bool> joint_torque_limit_violation;
     std::vector<bool> joint_current_limit_violation;
@@ -180,7 +182,17 @@ public:
     // event thread; it does not publish any accompanying state.
     RelaxedAtomicBool fungo_pressed;
     RelaxedAtomicBool lost_references;
-    bool breaking_mechanics{false};
+};
+
+// Per-joint snapshot of the virtual joint limit, for debugging.
+struct VirtualJointLimitDebug{
+    std::vector<bool> predicted; // joint_pos_limit_violation_predicted
+    std::vector<int> side;       // +1 braking toward position_max, -1 toward position_min, 0 inactive
+    std::vector<double> anchor;  // [rad], NaN when inactive
+    std::vector<double> k;       // [Nm/rad]
+    std::vector<double> d;       // [Nm*s/rad]
+    std::vector<bool> damping_only; // latched damping only (damping_after_stop)
+    std::vector<double> torque;  // [Nm] computed before the torque limits clamp, NaN when not overridden
 };
 
 enum class CONTROL_MODE{
@@ -213,6 +225,7 @@ public:
 
     void triggerEmergencyStop();
 
+    // Latching: true sets the anomaly, false is ignored; only init() clears it.
     void setLostReferences(bool lost);
 
     bool isEmergencyStopActive() const;
@@ -221,9 +234,8 @@ public:
 
     double getEventsFrequency() const;
 
-    // Each joint's first triggering torque while breaking_mechanics is
-    // latched (see mechanical_stress_trigger_torque below).
-    const std::vector<std::optional<double>>& getMechanicalStressTriggerTorque() const;
+    // Fills debug with the current virtual joint limit state (resized to one entry per joint).
+    void getVirtualJointLimitDebug(VirtualJointLimitDebug& debug) const;
 
     // Robot anomalies
     RobotAnomalies anomalies;
@@ -231,39 +243,60 @@ public:
     enum class SafetyState{
         NOMINAL=0,
         EMERGENCY_STOP,
-        DAMPING
+        DAMPING,
+        VIRTUAL_ENDSTOP_ENFORCING,
     } safety_state;
 
     SafetyState getSafetyState() const;
 
-    TLimits limits;
+    // Limits are loaded once by init() and cannot be changed afterwards.
+    const TLimits& getLimits() const;
 
     void manageAnomalies(const TState& state, TCommands& commands, CONTROL_MODE control_mode);
 
+    protected:
+        TLimits limits;
+
     private:
         void setFungoPressed(bool pressed);
-        void checkBreakingMechanics(size_t joint_index, double torque);
+        /**
+         * @brief Position thresholds shrunk by the distance needed to brake the joint 
+         *        at its current velocity with the torque left after torque_command.
+        
+         * 
+         * @param joint_index 
+         * @param velocity 
+         * @param torque_command 
+         * @param threshold_min 
+         * @param threshold_max 
+         */
+        void computePredictedPositionThresholds(size_t joint_index, 
+                                                const double velocity, 
+                                                const double torque,
+                                                double& threshold_min, 
+                                                double& threshold_max) const;
         void checkCommand(std::vector<double>& command , std::vector<double> min_limit, std::vector<double> max_limit, std::vector<bool>& anomaly_nan, std::vector<bool>& anomaly_inf, std::vector<bool>& anomaly_limit_min, std::vector<bool>& anomaly_limit_max, std::vector<double>& trigger_value);
         void setSafetyState();
         void executeRecoveryMode(const TState& state, TCommands& commands);
 
         // Anomaly auxiliary variables for anomaly detection
-        // breaking_mechanics aux variables
-        double mechanical_stress_exp_time_scale;
-        double mechanical_stress_exp_decay;
-        double mechanical_stress_max_torque;
-        std::vector<std::optional<std::chrono::steady_clock::time_point>> mechanical_stress_start_per_joint;
-        // Preserve each joint's first triggering torque while breaking_mechanics is latched.
-        std::vector<std::optional<double>> mechanical_stress_trigger_torque;
         // Timeout for detecting missing required high-level input messages.
         double references_timeout; // seconds since the latest required high-level input message
         // Rate at which the high-level interface's background thread checks
         // for events to log, decoupled from the control loop's frequency.
         double events_frequency; // Hz
+        // Control loop period, needed for delay compensation
+        double control_period; // seconds; 0 disables delay compensation
+        // Below this joint speed the virtual joint limit is not activated.
+        double virtual_joint_limit_min_velocity; // rad/s
+        // Fraction of the torque limit the virtual joint limit trigger is sized on, in (0, 1].
+        // Below 1 it triggers earlier, leaving the rest as headroom for model errors.
+        double virtual_joint_limit_torque_scale;
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;
         RecoveryDamping recovery_damping;
+        RecoveryVirtualJointLimit recovery_virtual_joint_limit;
 };
 
 template <typename TState, typename TRef, typename TCommands>

@@ -23,6 +23,7 @@ private:
     void checkInvalidValueEvents(const GenericRobotInterface& source);
     void checkBatteryEvents(const GenericRobotInterface& source);
     void checkEmergencyAndRecoveryEvents(const GenericRobotInterface& source);
+    void checkVirtualEndstopEvents(const GenericRobotInterface& source);
     void checkSafetyStateEvents(const GenericRobotInterface& source);
 
     std::shared_ptr<dls::logging::AppLogger> event_logger_;
