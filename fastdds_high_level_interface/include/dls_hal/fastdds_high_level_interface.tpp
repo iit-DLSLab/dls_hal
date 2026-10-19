@@ -59,7 +59,7 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     dls::topics::battery_status);
     output_hal_commands_feedback = this->transport.template buildOutput<dls2_interface::msg::ControlSignal>(
     dls::topics::hal_commands_feedback);
-    output_hal_safety_debug = transport.buildOutput<dls2_interface::msg::HalSafetyDebug>(
+    output_hal_safety_debug = this->transport.template buildOutput<dls2_interface::msg::HalSafetyDebug>(
     dls::topics::hal_safety_debug);
 
     // init inputs

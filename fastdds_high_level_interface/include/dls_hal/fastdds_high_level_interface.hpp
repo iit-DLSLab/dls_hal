@@ -55,7 +55,9 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         dls::WriterPtr<dls2_interface::msg::Imu> output_imu;
         dls::WriterPtr<dls2_interface::msg::BatteryStatus> output_battery_status;
         dls::WriterPtr<dls2_interface::msg::ControlSignal> output_hal_commands_feedback;
-    protected:
+        dls::WriterPtr<dls2_interface::msg::HalSafetyDebug> output_hal_safety_debug;
+
+        protected:
         // Publish the outputs through the fastdds transport. Runs on the io thread.
         virtual void publishOutputs(const RI& source);
         // Read the latest inputs from the fastdds transport into current_input_. Runs on the io thread.
@@ -67,6 +69,9 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
 
         //! Event checker for anomalies and safety events
         FastDDSEventChecker event_checker_;
+
+        // Reused every write() to collect the virtual joint limit state for output_hal_safety_debug.
+        VirtualJointLimitDebug virtual_joint_limit_debug_;
 
         /**
          * @brief Stops and joins the io and event threads. Idempotent.
