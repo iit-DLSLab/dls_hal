@@ -117,6 +117,10 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
     release_tolerance_ = release_tolerance;
     damping_after_stop_ = damping_after_stop;
     damping_ratio_ = damping_ratio;
+    damp_all_enabled_ = false;
+    triggers_damp_all_.assign(n_joint, false);
+    damp_all_gain_.assign(n_joint, 0.0);
+    damp_all_latched_ = false;
     // Underdamped (zeta < 1): x(t) = w / w_d * exp(-zeta * w_n * t) * sin(w_d * t), deepest at
     // w_d * t = arccos(zeta), i.e. w / w_n * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)).
     // The constant-push step response overshoots tau / k by exp(-pi * zeta / sqrt(1 - zeta^2)).
@@ -129,6 +133,26 @@ void RecoveryVirtualJointLimit::init(size_t n_joint, double release_tolerance, b
         penetration_factor_ = 1.0 / M_E;
         push_overshoot_ = 1.0;
     }
+}
+
+void RecoveryVirtualJointLimit::setDampAll(bool enabled, const std::vector<bool>& triggers_damp_all,
+                                           const std::vector<double>& damping_gain) {
+    if (triggers_damp_all.size() != side_.size() || damping_gain.size() != side_.size()) {
+        throw std::invalid_argument("Virtual joint limit damp all: init() first, then one trigger flag and one gain per joint");
+    }
+    for (std::size_t i = 0; i < damping_gain.size(); ++i) {
+        if (!std::isfinite(damping_gain[i]) || damping_gain[i] < 0.0) {
+            throw std::invalid_argument("Virtual joint limit damp all gain must be finite and non-negative at joint " + std::to_string(i));
+        }
+    }
+    damp_all_enabled_ = enabled;
+    triggers_damp_all_ = triggers_damp_all;
+    damp_all_gain_ = damping_gain;
+    damp_all_latched_ = false;
+}
+
+bool RecoveryVirtualJointLimit::isDampAllLatched() const {
+    return damp_all_latched_;
 }
 
 double RecoveryVirtualJointLimit::getStoppingDistanceCoefficient() const {
@@ -300,6 +324,9 @@ void RecoveryVirtualJointLimit::setParams(size_t index,
     q_max_trigger_[index] = upper_limit ? anchor : q_max;
     q_min_trigger_[index] = upper_limit ? q_min : anchor;
     side_[index] = upper_limit ? 1 : -1;
+    if (damp_all_enabled_ && triggers_damp_all_[index]) {
+        damp_all_latched_ = true;
+    }
 }
 
 void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& commands){
@@ -307,8 +334,13 @@ void RecoveryVirtualJointLimit::execute(const RobotState& state, RobotCommands& 
                                        limits_.position_min.size(), side_.size()});
     std::fill(tau_.begin(), tau_.end(), std::numeric_limits<double>::quiet_NaN());
     for (std::size_t id = 0; id < joint_count; ++id) {
-        // Only active joints are braked; the others keep their controller torque.
+        // Only active joints are braked; the others keep their controller torque, or are
+        // damped once a joint allowed to start it has triggered the damping of all joints.
         if (side_[id] == 0) {
+            if (damp_all_latched_) {
+                tau_[id] = -damp_all_gain_[id] * state.velocity[id];
+                commands.torque[id] = tau_[id];
+            }
             continue;
         }
         // Latched damping only: the joint is no longer sprung back, wherever it is.

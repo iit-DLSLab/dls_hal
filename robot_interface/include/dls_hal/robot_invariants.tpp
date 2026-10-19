@@ -121,6 +121,21 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         damping_ratio = 1.0 / std::sqrt(stiffness_scale);
     }
     recovery_virtual_joint_limit.init(n_joint, release_tolerance, damping_after_stop, damping_ratio);
+    // Damping of all the joints (gain recovery_damping_gain) once a joint triggers the virtual
+    // joint limit, latched until the HAL restarts; the excluded joints (e.g. the knees) are
+    // braked as usual but do not start it.
+    const auto damp_all_node = config["robot_interface"]["safety"]["virtual_joint_limit_damp_all_joints"];
+    const bool damp_all = damp_all_node ? damp_all_node.as<bool>() : false;
+    std::vector<bool> triggers_damp_all(n_joint, true);
+    const auto damp_all_excluded_node = config["robot_interface"]["safety"]["virtual_joint_limit_damp_all_excluded_joints"];
+    if (damp_all_excluded_node) {
+        for (const int joint : damp_all_excluded_node.as<std::vector<int>>()) {
+            if (joint < 0 || joint >= n_joint)
+                throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_damp_all_excluded_joints must contain joint indices in [0, n_joints)");
+            triggers_damp_all[joint] = false;
+        }
+    }
+    recovery_virtual_joint_limit.setDampAll(damp_all, triggers_damp_all, damping_gain);
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -185,10 +200,14 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         // the prediction does, until the spring has brought the joint back to its anchor.
         if (!recovery_virtual_joint_limit.isActive(i)) {
             if (is_predicted) {
+                const bool was_damp_all_latched = recovery_virtual_joint_limit.isDampAllLatched();
                 // Zero-torque passed instead of state.torque[i], recovery overriding the command
                 recovery_virtual_joint_limit
                     .setParams(i, limits.joint_inertia[i], state.position[i], state.velocity[i],
                                0.0, joint_position_threshold_min, joint_position_threshold_max);
+                if (!was_damp_all_latched && recovery_virtual_joint_limit.isDampAllLatched())
+                    std::cout << "[safety] virtual joint limit on joint " << i
+                              << ": damping all joints until the HAL restarts" << std::endl;
             }
         } else {
             // With damping_after_stop, a joint moving away from the limit is damped from then on
@@ -389,7 +408,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
     if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
         anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::EMERGENCY_STOP;
-    }else if (recovery_virtual_joint_limit.anyActive()) {
+    }else if (recovery_virtual_joint_limit.anyActive() || recovery_virtual_joint_limit.isDampAllLatched()) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
     }else if (anomalies.lost_references.load(std::memory_order_relaxed)) {
         safety_state = SafetyState::DAMPING;
