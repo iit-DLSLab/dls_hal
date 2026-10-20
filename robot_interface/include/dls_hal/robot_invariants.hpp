@@ -292,6 +292,9 @@ public:
         // Fraction of the torque limit the virtual joint limit trigger is sized on, in (0, 1].
         // Below 1 it triggers earlier, leaving the rest as headroom for model errors.
         double virtual_joint_limit_torque_scale;
+        // Per joint: the virtual joint limit triggers only toward position_max (e.g. the knees,
+        // stretched leg); approaching position_min never activates it.
+        std::vector<bool> virtual_joint_limit_upper_only;
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

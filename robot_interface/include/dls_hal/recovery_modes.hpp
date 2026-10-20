@@ -81,6 +81,21 @@ public:
               double damping_ratio = 1.0);
 
     /**
+     * @brief Call after init(). When enabled, the activation of a joint whose triggers_damp_all
+     *        entry is true latches the damping of all the joints until the HAL restarts: every
+     *        joint not braked by its own virtual joint limit gets -damping_gain * velocity.
+     *        Joints with triggers_damp_all false (e.g. the knees) are braked as usual but do
+     *        not start it.
+     *
+     * @param enabled
+     * @param triggers_damp_all one entry per joint
+     * @param damping_gain [Nm * s / rad] one entry per joint, finite and non-negative
+     */
+    void setDampAll(bool enabled, const std::vector<bool>& triggers_damp_all,
+                    const std::vector<double>& damping_gain);
+    bool isDampAllLatched() const;
+
+    /**
      * @brief c(zeta) in the stopping distance c * I * w^2 / tau of the brake whose peak torque
      *        is tau: 2 * zeta * exp(-zeta * arccos(zeta) / sqrt(1 - zeta^2)), 2 / e at zeta = 1.
      *        The trigger must use it, so that it matches the braking law.
@@ -180,6 +195,10 @@ private:
     double release_tolerance_ = 0.0;
     bool damping_after_stop_ = false;
     double damping_ratio_ = 1.0;
+    bool damp_all_enabled_ = false;
+    std::vector<bool> triggers_damp_all_;
+    std::vector<double> damp_all_gain_;
+    bool damp_all_latched_ = false; // never cleared until init()
     // Penetration from velocity w: w * sqrt(I / k) * penetration_factor_ (1 / e at zeta = 1).
     double penetration_factor_ = 1.0 / M_E;
     // Peak of the step response to a constant push tau, in units of tau / k (1 at zeta = 1).
