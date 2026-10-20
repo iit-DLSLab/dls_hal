@@ -30,6 +30,9 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         explicit FastDDSHLInterface(const std::string& ID = "FastDDSHLInterface");
         ~FastDDSHLInterface();
 
+        // Starts the io and event threads, which immediately call publishOutputs(),
+        // readInputs() and checkEvents(). Derived classes overriding init() must set up
+        // everything their overrides use (e.g. extra outputs) *before* calling this.
         void init(RI& source, const YAML::Node& config) override;
 
         // Fill the robot interface with the latest inputs information from the io thread
