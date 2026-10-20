@@ -1,5 +1,6 @@
 #include "robot_invariants.hpp"
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 #define ROBOT_SAFETY_TEMPLATE template <typename TState, typename TRef, typename TCommands, typename TLimits>
@@ -136,6 +137,15 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
         }
     }
     recovery_virtual_joint_limit.setDampAll(damp_all, triggers_damp_all, damping_gain);
+    virtual_joint_limit_upper_only.assign(n_joint, false);
+    const auto upper_only_node = config["robot_interface"]["safety"]["virtual_joint_limit_upper_only_joints"];
+    if (upper_only_node) {
+        for (const int joint : upper_only_node.as<std::vector<int>>()) {
+            if (joint < 0 || joint >= n_joint)
+                throw std::invalid_argument("robot_interface.safety.virtual_joint_limit_upper_only_joints must contain joint indices in [0, n_joints)");
+            virtual_joint_limit_upper_only[joint] = true;
+        }
+    }
 
     safety_state = SafetyState::NOMINAL;
 }
@@ -190,6 +200,10 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         // Zero-torque passed instead of state.torque[i], recovery overriding the command
         computePredictedPositionThresholds(i, velocity_next, 0.0,
                                            joint_position_threshold_min, joint_position_threshold_max);
+        // Upper-only joints: no threshold toward position_min, so neither the prediction nor
+        // the activation (side chosen from the crossed threshold) can pick that side.
+        if (virtual_joint_limit_upper_only[i])
+            joint_position_threshold_min = -std::numeric_limits<double>::infinity();
 
         anomalies.joint_pos_limit_violation[i] = checkJointStateLimit(state.position[i], limits.position_min[i], limits.position_max[i]);
         // Slow joints do not activate the virtual joint limit, even past the position limits.
