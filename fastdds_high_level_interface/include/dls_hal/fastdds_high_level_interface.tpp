@@ -80,6 +80,7 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     output_blind_state->msg.feet_contact().resize(source.state.contacts.size(), false);
     output_blind_state->msg.motors_current().resize(source.state.motors_current.size(), 0.0);
     output_blind_state->msg.motors_status_word().resize(source.state.motors_status_word.size(), 0);
+    output_blind_state->msg.motors_fault_info().resize(source.state.motor_fault_info.size(), "");
     output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
 
     output_hal_commands_feedback->msg = input_control_signal->msg;
@@ -192,6 +193,11 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     output_blind_state->msg.feet_contact() = state.contacts;
     output_blind_state->msg.motors_current() = state.motors_current;
     output_blind_state->msg.motors_status_word() = state.motors_status_word;
+    output_blind_state->msg.motors_fault_info().resize(state.motor_fault_info.size());
+    for (size_t i = 0; i < state.motor_fault_info.size(); ++i) {
+        const auto& fault_info = state.motor_fault_info[i];
+        output_blind_state->msg.motors_fault_info()[i].assign(fault_info.data(), strnlen(fault_info.data(), fault_info.size()));
+    }
     output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
 
     // fill in imu state

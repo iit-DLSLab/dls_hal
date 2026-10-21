@@ -44,6 +44,7 @@ void RobotState::init(const YAML::Node& config){
     motor_temperature.resize(num_joints, 0.0);
     motors_current.resize(num_joints, 0.0);
     motors_status_word.resize(num_joints, 0);
+    motor_fault_info.resize(num_joints, MotorFaultInfo{});
     names.resize(num_joints, "");
     robot_name = "";
     trunk_temperature = 0.0;
