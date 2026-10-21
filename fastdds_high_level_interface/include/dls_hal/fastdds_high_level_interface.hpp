@@ -4,6 +4,7 @@
 #include "transports/fastdds/fastdds_transport.hpp"
 #include "dls_hal/generic_robot_interface.hpp"
 #include "dls_hal/fastdds_event_checker.hpp"
+#include "dls_hal/hl_command.hpp"
 #include "dls2/signal/reader.hpp"
 #include "dls2/signal/writer.hpp"
 
@@ -12,6 +13,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <vector>
 #include <stop_token>
 #include <thread>
 #include <type_traits>
@@ -73,11 +76,20 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         //! Event checker for anomalies and safety events
         FastDDSEventChecker event_checker_;
 
+        /**
+         * @brief Registers a console command on the interface's command manager; the commands
+         * it receives are applied to the robot interface in read(). Derived classes add their
+         * commands in init(): read() iterates the commands, so they must not be added once
+         * the HAL loop is running.
+         */
+        template <typename TCommand>
+        void addCommand(std::unique_ptr<TCommand> command);
+
         // Reused every write() to collect the virtual joint limit state for output_hal_safety_debug.
         VirtualJointLimitDebug virtual_joint_limit_debug_;
 
         /**
-         * @brief Stops and joins the io and event threads. Idempotent.
+         * @brief Stops and joins the io and event threads, and unregisters the console commands. Idempotent.
          * Derived classes overriding publishOutputs(), readInputs() or checkEvents() must call it
          * in their destructor: the threads would otherwise keep calling the overrides while
          * the derived members are being destroyed, before ~FastDDSHLInterface() stops them.
@@ -116,6 +128,12 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         // each cycle; copied from the source in init() so it is valid before the
         // first write().
         RI latest_output_;
+
+        //! Console commands added by addCommand(), applied in read()
+        std::vector<std::unique_ptr<HLCommandBase>> commands_;
+        //! Unique command manager of the interface. Declared after commands_, so that
+        // the commands are unregistered before the objects their callbacks use are destroyed.
+        std::unique_ptr<dls::CommandManager> command_manager_;
 };
 
 #include "dls_hal/fastdds_high_level_interface.tpp"

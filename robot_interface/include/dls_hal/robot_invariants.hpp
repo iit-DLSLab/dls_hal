@@ -318,7 +318,16 @@ public:
     void impedanceControl(const TState& state, const TRef& ref);
     void currentControl(const TState& state, const TRef& ref);
 
+    // Friction compensation added by impedanceControl(). joint = -1 sets the gains of all joints.
+    void setFrictionCompensation(bool enabled);
+    // Friction compensation gains for a single joint. joint = -1 sets the gains of all joints.
+    void setFrictionGains(int joint, double k_static, double k_dynamic);
+
     CONTROL_MODE control_mode;
+
+    bool friction_compensation_enabled;
+    std::vector<double> k_static_friction;   // Coulomb friction gain [Nm], applied as k * sign(velocity)
+    std::vector<double> k_dynamic_friction;  // Viscous friction gain [Nm*s/rad], applied as k * velocity
 
     TCommands commands;          // Accepted values sent to the hardware.
 };
