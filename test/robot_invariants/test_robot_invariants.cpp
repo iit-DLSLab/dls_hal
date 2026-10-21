@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +29,7 @@ constexpr CONTROL_MODE kCheckedModes[] = {
 constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 constexpr double kInf = std::numeric_limits<double>::infinity();
 constexpr unsigned int kFungoStatusWord = 4145;
+constexpr const char* kNoFaultInfo = "NoFault";
 
 // Distinct limits per joint, so a wrong index shows up as a wrong flag.
 constexpr const char* kConfig = R"(
@@ -44,6 +46,7 @@ robot_interface:
     mode: 1
   safety:
     mechanical_stress_max_torque: 30.0
+    motor_no_fault_info: NoFault
     limits:
       position_min_with_margin: [-1.0, -2.0, -3.0]
       position_max_with_margin: [1.0, 2.0, 3.0]
@@ -99,11 +102,18 @@ protected:
         state.motor_temperature = {25.0, 25.0, 25.0};
         state.motors_status_word = {0, 0, 0};
         state.const_motors_status_words.fungo_pressed = kFungoStatusWord;
+        for (auto& fault_info : state.motor_fault_info) setFaultInfo(fault_info, kNoFaultInfo);
         for (auto& battery : state.battery) battery.charge_percentage = 80.0;
 
         commands.position = {0.1, 0.2, 0.3};
         commands.velocity = {1.0, 2.0, 3.0};
         commands.torque = {5.0, 5.0, 5.0};
+    }
+
+    static void setFaultInfo(MotorFaultInfo& fault_info, const std::string& text)
+    {
+        fault_info.fill('\0');
+        text.copy(fault_info.data(), fault_info.size() - 1);
     }
 
     const RobotAnomalies& anomalies() const { return safety.anomalies; }
@@ -134,6 +144,7 @@ protected:
             {"inf_torque_command_detected", &a.inf_torque_command_detected},
             {"motor_overheat_detected", &a.motor_overheat_detected},
             {"motor_under_temperature_detected", &a.motor_under_temperature_detected},
+            {"motor_fault_detected", &a.motor_fault_detected},
             {"battery_charge_low", &a.battery_charge_low},
         };
     }
@@ -362,6 +373,42 @@ TEST_F(RobotSafetyTest, fungo_pressed_NotRaisedByOtherStatusWords)
     EXPECT_FALSE(safety.isFungoPressed());
 }
 
+// --- Motor fault --------------------------------------------------------------
+
+TEST_F(RobotSafetyTest, motor_fault_detected)
+{
+    setFaultInfo(state.motor_fault_info[2], "OverCurrent");
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_fault_detected), "001");
+
+    // Recomputed every cycle: cleared as soon as the motor reports no fault again.
+    setNominal();
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_fault_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_fault_detected_NotRaisedByEmptyFaultInfo)
+{
+    // Motors that do not report fault_info (e.g. simulation) leave it empty.
+    setFaultInfo(state.motor_fault_info[0], "");
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_fault_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_fault_detected_DisabledWithoutNoFaultInfo)
+{
+    config["robot_interface"]["safety"].remove("motor_no_fault_info");
+    init();
+    setFaultInfo(state.motor_fault_info[1], "OverCurrent");
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_fault_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_fault_detected_RejectsTooLongNoFaultInfo)
+{
+    config["robot_interface"]["safety"]["motor_no_fault_info"] = std::string(64, 'x');
+    EXPECT_THROW(safety.init(config), std::invalid_argument);
+}
 
 // --- Command clamping -------------------------------------------------------
 

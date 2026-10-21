@@ -21,6 +21,7 @@ public:
 private:
     void checkJointLimitEvents(const GenericRobotInterface& source);
     void checkInvalidValueEvents(const GenericRobotInterface& source);
+    void checkMotorFaultEvents(const GenericRobotInterface& source);
     void checkBatteryEvents(const GenericRobotInterface& source);
     void checkEmergencyAndRecoveryEvents(const GenericRobotInterface& source);
     void checkVirtualEndstopEvents(const GenericRobotInterface& source);

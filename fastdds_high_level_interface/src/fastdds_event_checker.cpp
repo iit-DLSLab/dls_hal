@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <sstream>
 
 namespace
@@ -116,6 +117,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
 {
     checkJointLimitEvents(ri);
     checkInvalidValueEvents(ri);
+    checkMotorFaultEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
     checkVirtualEndstopEvents(ri);
@@ -178,6 +180,17 @@ void FastDDSEventChecker::checkInvalidValueEvents(const GenericRobotInterface& r
 
     if (!nan_message.empty()) event_logger_->error(nan_message, EventID::NAN_VALUE);
     if (!inf_message.empty()) event_logger_->error(inf_message, EventID::INF_VALUE);
+}
+
+void FastDDSEventChecker::checkMotorFaultEvents(const GenericRobotInterface& ri)
+{
+    const auto& fault_info = ri.state.motor_fault_info;
+    const auto message = collectJointDetails(ri.state, ri.safety.anomalies.motor_fault_detected,
+                                             [&](std::ostream& out, size_t i) {
+        const auto& info = fault_info.at(i);
+        out << "fault_info=" << std::string(info.data(), strnlen(info.data(), info.size()));
+    });
+    if (!message.empty()) event_logger_->error("Motor fault detected:" + message, EventID::MOTOR_FAULT);
 }
 
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)

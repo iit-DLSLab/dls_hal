@@ -11,6 +11,7 @@
 #include <cmath>
 #include <chrono>
 #include <optional>
+#include <string>
 
 // std::atomic_bool with no copy constructor/assignment operator of its own
 // (copying it is not itself atomic), which forces any enclosing struct to
@@ -177,6 +178,8 @@ public:
     std::vector<bool> inf_torque_command_detected;
     std::vector<bool> motor_overheat_detected;
     std::vector<bool> motor_under_temperature_detected;
+    // The motor reports a fault_info different from robot_interface.safety.motor_no_fault_info.
+    std::vector<bool> motor_fault_detected;
     std::vector<bool> battery_charge_low;
 
     // One-way latch written by the command thread and read by the real-time
@@ -299,6 +302,8 @@ public:
         // Per joint: the virtual joint limit triggers only toward position_max (e.g. the knees,
         // stretched leg); approaching position_min never activates it.
         std::vector<bool> virtual_joint_limit_upper_only;
+        // fault_info a motor reports when it has no fault; empty disables the motor fault check.
+        std::string motor_no_fault_info;
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;
