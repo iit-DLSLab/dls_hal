@@ -200,7 +200,7 @@ void FastDDSEventChecker::checkMotorNotOperationalEvents(const GenericRobotInter
     const auto& status_word = ri.state.motors_status_word;
     const auto message = collectJointDetails(ri.state, ri.safety.anomalies.motor_not_operational_detected,
                                              [&](std::ostream& out, size_t i) {
-        out << "status_word=0x" << std::hex << status_word.at(i) << std::dec;
+        out << "status_word=" << status_word.at(i);
     });
     if (!message.empty())
         event_logger_->error("Motor not in operational state:" + message, EventID::MOTOR_NOT_OPERATIONAL);
