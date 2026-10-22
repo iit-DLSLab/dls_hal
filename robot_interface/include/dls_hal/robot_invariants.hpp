@@ -76,6 +76,8 @@ using MotorFaultInfo = std::array<char, 64>;
 class MotorStatusWords{
 public:
     unsigned int fungo_pressed=0;
+    // Status word bits set by an operational motor; 0 disables the motor operational check.
+    unsigned int operational_mask=0;
 };
 
 class RobotState{
@@ -180,6 +182,8 @@ public:
     std::vector<bool> motor_under_temperature_detected;
     // The motor reports a fault_info different from robot_interface.safety.motor_no_fault_info.
     std::vector<bool> motor_fault_detected;
+    // The motor status word does not have all the bits of MotorStatusWords::operational_mask set.
+    std::vector<bool> motor_not_operational_detected;
     std::vector<bool> battery_charge_low;
 
     // One-way latch written by the command thread and read by the real-time
@@ -229,6 +233,11 @@ public:
     void displayAnomalies() const;
 
     bool isFungoPressed() const;
+
+    bool isAnyMotorNotOperational() const;
+
+    // How long the HAL notifies the motors not in operational state before failing to start.
+    double getMotorNotOperationalNotifyDuration() const;
 
     void triggerEmergencyStop();
 
@@ -304,6 +313,7 @@ public:
         std::vector<bool> virtual_joint_limit_upper_only;
         // fault_info a motor reports when it has no fault; empty disables the motor fault check.
         std::string motor_no_fault_info;
+        double motor_not_operational_notify_duration; // seconds
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

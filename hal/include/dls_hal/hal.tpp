@@ -1,5 +1,7 @@
 #include "dls_hal/hal.hpp"
 
+#include <exception>
+
 #define HAL_TEMPLATE template <typename LLI, typename RI, typename HLI>
 #define HAL_TYPE Hal<LLI, RI, HLI>
 
@@ -22,7 +24,18 @@ void Hal<LLI, RI, HLI>::init(   const YAML::Node& robot_interface_config,
                                 const YAML::Node& high_level_interface_config)
 {
     ri.init(robot_interface_config);
-    lli.init(ri, low_level_interface_config);
+    try {
+        lli.init(ri, low_level_interface_config);
+    } catch (const std::exception&) {
+        // The LLI may fill the motor status words before failing to start: notify the motors
+        // not in operational state for a while, then go down with the same exception.
+        ri.checkState();
+        if constexpr (requires { hli.notifyMotorsNotOperational(ri); }) {
+            if (ri.safety.isAnyMotorNotOperational())
+                hli.notifyMotorsNotOperational(ri);
+        }
+        throw;
+    }
     hli.init(ri, high_level_interface_config);
 
     // initialize robot reference position with actual robot position, to avoid sudden jumps in the robot motion when starting the application

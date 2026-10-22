@@ -118,6 +118,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkJointLimitEvents(ri);
     checkInvalidValueEvents(ri);
     checkMotorFaultEvents(ri);
+    checkMotorNotOperationalEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
     checkVirtualEndstopEvents(ri);
@@ -191,6 +192,17 @@ void FastDDSEventChecker::checkMotorFaultEvents(const GenericRobotInterface& ri)
         out << "fault_info=" << std::string(info.data(), strnlen(info.data(), info.size()));
     });
     if (!message.empty()) event_logger_->error("Motor fault detected:" + message, EventID::MOTOR_FAULT);
+}
+
+void FastDDSEventChecker::checkMotorNotOperationalEvents(const GenericRobotInterface& ri)
+{
+    const auto& status_word = ri.state.motors_status_word;
+    const auto message = collectJointDetails(ri.state, ri.safety.anomalies.motor_not_operational_detected,
+                                             [&](std::ostream& out, size_t i) {
+        out << "status_word=0x" << std::hex << status_word.at(i) << std::dec;
+    });
+    if (!message.empty())
+        event_logger_->error("Motor not in operational state:" + message, EventID::MOTOR_NOT_OPERATIONAL);
 }
 
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)

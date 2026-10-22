@@ -145,6 +145,7 @@ protected:
             {"motor_overheat_detected", &a.motor_overheat_detected},
             {"motor_under_temperature_detected", &a.motor_under_temperature_detected},
             {"motor_fault_detected", &a.motor_fault_detected},
+            {"motor_not_operational_detected", &a.motor_not_operational_detected},
             {"battery_charge_low", &a.battery_charge_low},
         };
     }
@@ -407,6 +408,36 @@ TEST_F(RobotSafetyTest, motor_fault_detected_DisabledWithoutNoFaultInfo)
 TEST_F(RobotSafetyTest, motor_fault_detected_RejectsTooLongNoFaultInfo)
 {
     config["robot_interface"]["safety"]["motor_no_fault_info"] = std::string(64, 'x');
+    EXPECT_THROW(safety.init(config), std::invalid_argument);
+}
+
+// --- Motor not operational ---------------------------------------------------
+
+TEST_F(RobotSafetyTest, motor_not_operational_detected)
+{
+    state.const_motors_status_words.operational_mask = 0x4;
+    state.motors_status_word = {0x4, 0x3, 0x7};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_not_operational_detected), "010");
+    EXPECT_TRUE(safety.isAnyMotorNotOperational());
+
+    // Recomputed every cycle: cleared as soon as the motor reports operation enabled again.
+    state.motors_status_word = {0x4, 0x4, 0x4};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_not_operational_detected), "000");
+    EXPECT_FALSE(safety.isAnyMotorNotOperational());
+}
+
+TEST_F(RobotSafetyTest, motor_not_operational_detected_DisabledWithoutMask)
+{
+    state.motors_status_word = {0, 0, 0};
+    safety.checkState(state);
+    EXPECT_EQ(bits(anomalies().motor_not_operational_detected), "000");
+}
+
+TEST_F(RobotSafetyTest, motor_not_operational_detected_RejectsNegativeNotifyDuration)
+{
+    config["robot_interface"]["safety"]["motor_not_operational_notify_duration"] = -1.0;
     EXPECT_THROW(safety.init(config), std::invalid_argument);
 }
 

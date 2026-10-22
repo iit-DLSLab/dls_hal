@@ -51,6 +51,7 @@ void RobotState::init(const YAML::Node& config){
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     battery.resize(config["general"]["n_batteries"].as<int>(), RobotBattery());
     const_motors_status_words.fungo_pressed = -1;
+    const_motors_status_words.operational_mask = 0;
     
     for (size_t i = 0; i < battery.size(); ++i) {
         battery[i].init();

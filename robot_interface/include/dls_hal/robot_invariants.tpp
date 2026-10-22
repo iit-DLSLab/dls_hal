@@ -49,6 +49,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     if (motor_no_fault_info.size() >= std::tuple_size<MotorFaultInfo>::value)
         throw std::invalid_argument("robot_interface.safety.motor_no_fault_info must be shorter than "
                                     + std::to_string(std::tuple_size<MotorFaultInfo>::value) + " characters");
+    const auto notify_duration_node = config["robot_interface"]["safety"]["motor_not_operational_notify_duration"];
+    motor_not_operational_notify_duration = notify_duration_node ? notify_duration_node.as<double>() : 5.0;
+    if (!std::isfinite(motor_not_operational_notify_duration) || motor_not_operational_notify_duration < 0.0)
+        throw std::invalid_argument("robot_interface.safety.motor_not_operational_notify_duration must be finite and non-negative (s)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
@@ -76,6 +80,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_under_temperature_detected.resize(n_joint, false);
     anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.motor_fault_detected.assign(n_joint, false);
+    anomalies.motor_not_operational_detected.assign(n_joint, false);
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
 
@@ -254,6 +259,9 @@ void ROBOT_SAFETY_TYPE::checkState(const TState& state) {
         const auto& fault_info = state.motor_fault_info[i];
         anomalies.motor_fault_detected[i] = !motor_no_fault_info.empty() && fault_info[0] != '\0'
             && std::strncmp(fault_info.data(), motor_no_fault_info.c_str(), fault_info.size()) != 0;
+        const auto operational_mask = state.const_motors_status_words.operational_mask;
+        anomalies.motor_not_operational_detected[i] = operational_mask != 0
+            && (state.motors_status_word[i] & operational_mask) != operational_mask;
         if (state.motors_status_word[i] == state.const_motors_status_words.fungo_pressed) {
             setFungoPressed(true);
         }
@@ -370,6 +378,8 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
             std::cout << "Joint " << i << " motor overheat detected." << std::endl;
         if (anomalies.motor_fault_detected[i])
             std::cout << "Motor " << i << " fault detected." << std::endl;
+        if (anomalies.motor_not_operational_detected[i])
+            std::cout << "Motor " << i << " not in operational state." << std::endl;
     }
     if (std::any_of(anomalies.battery_charge_low.begin(), anomalies.battery_charge_low.end(),
                     [](bool low) { return low; }))
@@ -395,6 +405,18 @@ bool ROBOT_SAFETY_TYPE::isFungoPressed() const {
 ROBOT_SAFETY_TEMPLATE
 double ROBOT_SAFETY_TYPE::getReferencesTimeout() const {
     return references_timeout;
+}
+
+ROBOT_SAFETY_TEMPLATE
+bool ROBOT_SAFETY_TYPE::isAnyMotorNotOperational() const {
+    return std::any_of(anomalies.motor_not_operational_detected.begin(),
+                       anomalies.motor_not_operational_detected.end(),
+                       [](bool not_operational) { return not_operational; });
+}
+
+ROBOT_SAFETY_TEMPLATE
+double ROBOT_SAFETY_TYPE::getMotorNotOperationalNotifyDuration() const {
+    return motor_not_operational_notify_duration;
 }
 
 ROBOT_SAFETY_TEMPLATE

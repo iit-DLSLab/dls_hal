@@ -17,6 +17,8 @@ public:
     // Logger used for the events, so that robot-specific checks can log alongside the generic ones.
     dls::logging::AppLogger& eventLogger() const;
     void check(const GenericRobotInterface& source);
+    // Public: also published on its own when the low-level interface fails to start.
+    void checkMotorNotOperationalEvents(const GenericRobotInterface& source);
 
 private:
     void checkJointLimitEvents(const GenericRobotInterface& source);

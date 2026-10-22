@@ -50,6 +50,10 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         // Checks and logs the events of a robot interface snapshot. Runs on the event thread.
         // Override to add robot-specific checks, calling the base for the generic ones.
         virtual void checkEvents(const RI& source);
+        // Publishes the MOTOR_NOT_OPERATIONAL event of the source at the events frequency for
+        // robot_interface.safety.motor_not_operational_notify_duration. Blocking and independent
+        // of init(): used by the HAL when the low-level interface fails to start.
+        void notifyMotorsNotOperational(const RI& source);
 
         // Inputs
         dls::ReaderPtr<dls2_interface::msg::ControlSignal> input_control_signal;
