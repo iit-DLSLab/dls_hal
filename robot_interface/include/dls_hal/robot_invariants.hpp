@@ -250,13 +250,12 @@ public:
     void setLostReferences(bool lost);
 
     /**
-     * @brief Sets the ids of the nodes (e.g. EtherCAT slaves) the low-level interface discovered
-     * and of the expected ones it did not discover when it started; any undiscovered node raises
-     * the nodes_not_discovered anomaly. Called once by the low-level interface init().
+     * @brief Stores the ids of the nodes (e.g. EtherCAT slaves) discovered by the low-level interface;
+     * raises the nodes_not_discovered anomaly if not all the expected nodes were discovered.
+     * Called once by the low-level interface init().
      */
-    void setDiscoveredNodes(const std::vector<int>& discovered, const std::vector<int>& undiscovered);
+    void setDiscoveredNodes(const std::vector<int>& discovered, bool all_expected_discovered);
     const std::vector<int>& getDiscoveredNodes() const;
-    const std::vector<int>& getUndiscoveredNodes() const;
 
     bool isEmergencyStopActive() const;
 
@@ -325,9 +324,8 @@ public:
         // Per joint: the virtual joint limit triggers only toward position_max (e.g. the knees,
         // stretched leg); approaching position_min never activates it.
         std::vector<bool> virtual_joint_limit_upper_only;
-        // Nodes discovered and expected but not discovered by the low-level interface, see setDiscoveredNodes()
+        // Nodes discovered by the low-level interface, see setDiscoveredNodes()
         std::vector<int> discovered_nodes;
-        std::vector<int> undiscovered_nodes;
         // fault_info a motor reports when it has no fault; empty disables the motor fault check.
         std::string motor_no_fault_info;
         double startup_failure_notify_duration; // seconds

@@ -83,7 +83,6 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_not_operational_detected.assign(n_joint, false);
     anomalies.nodes_not_discovered = false;
     discovered_nodes.clear();
-    undiscovered_nodes.clear();
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
 
@@ -521,20 +520,14 @@ void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
 }
 
 ROBOT_SAFETY_TEMPLATE
-void ROBOT_SAFETY_TYPE::setDiscoveredNodes(const std::vector<int>& discovered, const std::vector<int>& undiscovered) {
+void ROBOT_SAFETY_TYPE::setDiscoveredNodes(const std::vector<int>& discovered, bool all_expected_discovered) {
     discovered_nodes = discovered;
-    undiscovered_nodes = undiscovered;
-    anomalies.nodes_not_discovered = !undiscovered_nodes.empty();
+    anomalies.nodes_not_discovered = !all_expected_discovered;
 }
 
 ROBOT_SAFETY_TEMPLATE
 const std::vector<int>& ROBOT_SAFETY_TYPE::getDiscoveredNodes() const {
     return discovered_nodes;
-}
-
-ROBOT_SAFETY_TEMPLATE
-const std::vector<int>& ROBOT_SAFETY_TYPE::getUndiscoveredNodes() const {
-    return undiscovered_nodes;
 }
 
 // RobotLowLevelControl

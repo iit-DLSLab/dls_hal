@@ -210,15 +210,10 @@ void FastDDSEventChecker::checkNodesNotDiscoveredEvents(const GenericRobotInterf
 {
     if (!ri.safety.anomalies.nodes_not_discovered) return;
 
-    const auto ids = [](const std::vector<int>& nodes) {
-        std::ostringstream out;
-        out << "[";
-        for (size_t i = 0; i < nodes.size(); ++i) out << (i == 0 ? "" : ", ") << nodes[i];
-        out << "]";
-        return out.str();
-    };
-    event_logger_->error("Nodes not discovered: " + ids(ri.safety.getUndiscoveredNodes())
-                         + "; discovered nodes: " + ids(ri.safety.getDiscoveredNodes()),
+    const auto& discovered = ri.safety.getDiscoveredNodes();
+    std::ostringstream ids;
+    for (size_t i = 0; i < discovered.size(); ++i) ids << (i == 0 ? "" : ", ") << discovered[i];
+    event_logger_->error("Not all the expected nodes were discovered, discovered nodes: [" + ids.str() + "]",
                          EventID::NODES_NOT_DISCOVERED);
 }
 
