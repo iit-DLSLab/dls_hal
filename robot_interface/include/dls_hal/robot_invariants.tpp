@@ -49,10 +49,10 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     if (motor_no_fault_info.size() >= std::tuple_size<MotorFaultInfo>::value)
         throw std::invalid_argument("robot_interface.safety.motor_no_fault_info must be shorter than "
                                     + std::to_string(std::tuple_size<MotorFaultInfo>::value) + " characters");
-    const auto notify_duration_node = config["robot_interface"]["safety"]["motor_not_operational_notify_duration"];
-    motor_not_operational_notify_duration = notify_duration_node ? notify_duration_node.as<double>() : 5.0;
-    if (!std::isfinite(motor_not_operational_notify_duration) || motor_not_operational_notify_duration < 0.0)
-        throw std::invalid_argument("robot_interface.safety.motor_not_operational_notify_duration must be finite and non-negative (s)");
+    const auto notify_duration_node = config["robot_interface"]["safety"]["startup_failure_notify_duration"];
+    startup_failure_notify_duration = notify_duration_node ? notify_duration_node.as<double>() : 5.0;
+    if (!std::isfinite(startup_failure_notify_duration) || startup_failure_notify_duration < 0.0)
+        throw std::invalid_argument("robot_interface.safety.startup_failure_notify_duration must be finite and non-negative (s)");
     const auto n_joint = config["general"]["n_joints"].as<int>();
     anomalies.joint_pos_limit_violation.resize(n_joint, false);
     anomalies.joint_pos_limit_violation_predicted.resize(n_joint, false);
@@ -81,6 +81,9 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_overheat_detected.resize(n_joint, false);
     anomalies.motor_fault_detected.assign(n_joint, false);
     anomalies.motor_not_operational_detected.assign(n_joint, false);
+    anomalies.nodes_not_discovered = false;
+    discovered_nodes.clear();
+    undiscovered_nodes.clear();
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
 
@@ -384,6 +387,8 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
     if (std::any_of(anomalies.battery_charge_low.begin(), anomalies.battery_charge_low.end(),
                     [](bool low) { return low; }))
         std::cout << "Battery charge is low." << std::endl;
+    if (anomalies.nodes_not_discovered)
+        std::cout << "Some nodes were not discovered." << std::endl;
 }
 
 
@@ -415,8 +420,13 @@ bool ROBOT_SAFETY_TYPE::isAnyMotorNotOperational() const {
 }
 
 ROBOT_SAFETY_TEMPLATE
-double ROBOT_SAFETY_TYPE::getMotorNotOperationalNotifyDuration() const {
-    return motor_not_operational_notify_duration;
+bool ROBOT_SAFETY_TYPE::isAnyNodeNotDiscovered() const {
+    return anomalies.nodes_not_discovered;
+}
+
+ROBOT_SAFETY_TEMPLATE
+double ROBOT_SAFETY_TYPE::getStartupFailureNotifyDuration() const {
+    return startup_failure_notify_duration;
 }
 
 ROBOT_SAFETY_TEMPLATE
@@ -508,6 +518,23 @@ void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
     // Latched: once lost, references stay lost until init() (HAL restart).
     if (lost)
         anomalies.lost_references.store(true, std::memory_order_relaxed);
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::setDiscoveredNodes(const std::vector<int>& discovered, const std::vector<int>& undiscovered) {
+    discovered_nodes = discovered;
+    undiscovered_nodes = undiscovered;
+    anomalies.nodes_not_discovered = !undiscovered_nodes.empty();
+}
+
+ROBOT_SAFETY_TEMPLATE
+const std::vector<int>& ROBOT_SAFETY_TYPE::getDiscoveredNodes() const {
+    return discovered_nodes;
+}
+
+ROBOT_SAFETY_TEMPLATE
+const std::vector<int>& ROBOT_SAFETY_TYPE::getUndiscoveredNodes() const {
+    return undiscovered_nodes;
 }
 
 // RobotLowLevelControl

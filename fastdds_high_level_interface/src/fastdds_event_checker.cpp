@@ -119,6 +119,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkInvalidValueEvents(ri);
     checkMotorFaultEvents(ri);
     checkMotorNotOperationalEvents(ri);
+    checkNodesNotDiscoveredEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
     checkVirtualEndstopEvents(ri);
@@ -203,6 +204,22 @@ void FastDDSEventChecker::checkMotorNotOperationalEvents(const GenericRobotInter
     });
     if (!message.empty())
         event_logger_->error("Motor not in operational state:" + message, EventID::MOTOR_NOT_OPERATIONAL);
+}
+
+void FastDDSEventChecker::checkNodesNotDiscoveredEvents(const GenericRobotInterface& ri)
+{
+    if (!ri.safety.anomalies.nodes_not_discovered) return;
+
+    const auto ids = [](const std::vector<int>& nodes) {
+        std::ostringstream out;
+        out << "[";
+        for (size_t i = 0; i < nodes.size(); ++i) out << (i == 0 ? "" : ", ") << nodes[i];
+        out << "]";
+        return out.str();
+    };
+    event_logger_->error("Nodes not discovered: " + ids(ri.safety.getUndiscoveredNodes())
+                         + "; discovered nodes: " + ids(ri.safety.getDiscoveredNodes()),
+                         EventID::NODES_NOT_DISCOVERED);
 }
 
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)

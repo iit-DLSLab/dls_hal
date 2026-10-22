@@ -157,6 +157,7 @@ protected:
         EXPECT_FALSE(safety.isFungoPressed());
         EXPECT_FALSE(safety.isEmergencyStopActive());
         EXPECT_FALSE(anomalies().lost_references.load());
+        EXPECT_FALSE(anomalies().nodes_not_discovered);
     }
 
     YAML::Node config;
@@ -437,8 +438,27 @@ TEST_F(RobotSafetyTest, motor_not_operational_detected_DisabledWithoutMask)
 
 TEST_F(RobotSafetyTest, motor_not_operational_detected_RejectsNegativeNotifyDuration)
 {
-    config["robot_interface"]["safety"]["motor_not_operational_notify_duration"] = -1.0;
+    config["robot_interface"]["safety"]["startup_failure_notify_duration"] = -1.0;
     EXPECT_THROW(safety.init(config), std::invalid_argument);
+}
+
+// --- Nodes not discovered ----------------------------------------------------
+
+TEST_F(RobotSafetyTest, nodes_not_discovered)
+{
+    safety.setDiscoveredNodes({1, 2}, {3});
+    EXPECT_TRUE(anomalies().nodes_not_discovered);
+    EXPECT_TRUE(safety.isAnyNodeNotDiscovered());
+    EXPECT_EQ(safety.getDiscoveredNodes(), (std::vector<int>{1, 2}));
+    EXPECT_EQ(safety.getUndiscoveredNodes(), (std::vector<int>{3}));
+
+    // Not recomputed by checkState(): kept until the next setDiscoveredNodes() or init().
+    safety.checkState(state);
+    EXPECT_TRUE(anomalies().nodes_not_discovered);
+
+    safety.setDiscoveredNodes({1, 2, 3}, {});
+    EXPECT_FALSE(anomalies().nodes_not_discovered);
+    EXPECT_FALSE(safety.isAnyNodeNotDiscovered());
 }
 
 // --- Command clamping -------------------------------------------------------

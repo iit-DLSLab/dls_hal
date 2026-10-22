@@ -27,12 +27,13 @@ void Hal<LLI, RI, HLI>::init(   const YAML::Node& robot_interface_config,
     try {
         lli.init(ri, low_level_interface_config);
     } catch (const std::exception&) {
-        // The LLI may fill the motor status words before failing to start: notify the motors
-        // not in operational state for a while, then go down with the same exception.
+        // The LLI may fill the motor status words and the discovered nodes before failing to start:
+        // notify the motors not in operational state and the nodes not discovered for a while,
+        // then go down with the same exception.
         ri.checkState();
-        if constexpr (requires { hli.notifyMotorsNotOperational(ri); }) {
-            if (ri.safety.isAnyMotorNotOperational())
-                hli.notifyMotorsNotOperational(ri);
+        if constexpr (requires { hli.notifyStartupFailure(ri); }) {
+            if (ri.safety.isAnyMotorNotOperational() || ri.safety.isAnyNodeNotDiscovered())
+                hli.notifyStartupFailure(ri);
         }
         throw;
     }

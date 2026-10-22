@@ -185,6 +185,8 @@ public:
     // The motor status word does not have all the bits of MotorStatusWords::operational_mask set.
     std::vector<bool> motor_not_operational_detected;
     std::vector<bool> battery_charge_low;
+    // At least one node expected by the low-level interface was not discovered (RobotSafety::setDiscoveredNodes()).
+    bool nodes_not_discovered = false;
 
     // One-way latch written by the command thread and read by the real-time
     // control thread; no blocking lock is needed.
@@ -236,13 +238,25 @@ public:
 
     bool isAnyMotorNotOperational() const;
 
-    // How long the HAL notifies the motors not in operational state before failing to start.
-    double getMotorNotOperationalNotifyDuration() const;
+    bool isAnyNodeNotDiscovered() const;
+
+    // How long the HAL notifies the startup failure events (motors not in operational state,
+    // nodes not discovered) before going down.
+    double getStartupFailureNotifyDuration() const;
 
     void triggerEmergencyStop();
 
     // Latching: true sets the anomaly, false is ignored; only init() clears it.
     void setLostReferences(bool lost);
+
+    /**
+     * @brief Sets the ids of the nodes (e.g. EtherCAT slaves) the low-level interface discovered
+     * and of the expected ones it did not discover when it started; any undiscovered node raises
+     * the nodes_not_discovered anomaly. Called once by the low-level interface init().
+     */
+    void setDiscoveredNodes(const std::vector<int>& discovered, const std::vector<int>& undiscovered);
+    const std::vector<int>& getDiscoveredNodes() const;
+    const std::vector<int>& getUndiscoveredNodes() const;
 
     bool isEmergencyStopActive() const;
 
@@ -311,9 +325,12 @@ public:
         // Per joint: the virtual joint limit triggers only toward position_max (e.g. the knees,
         // stretched leg); approaching position_min never activates it.
         std::vector<bool> virtual_joint_limit_upper_only;
+        // Nodes discovered and expected but not discovered by the low-level interface, see setDiscoveredNodes()
+        std::vector<int> discovered_nodes;
+        std::vector<int> undiscovered_nodes;
         // fault_info a motor reports when it has no fault; empty disables the motor fault check.
         std::string motor_no_fault_info;
-        double motor_not_operational_notify_duration; // seconds
+        double startup_failure_notify_duration; // seconds
 
         // Recovery procedures
         RecoveryESTOP recovery_estop;

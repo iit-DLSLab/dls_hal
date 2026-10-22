@@ -46,15 +46,16 @@ void FastDDSHLInterface<RI>::checkEvents(const RI& source)
 }
 
 template <typename RI>
-void FastDDSHLInterface<RI>::notifyMotorsNotOperational(const RI& source)
+void FastDDSHLInterface<RI>::notifyStartupFailure(const RI& source)
 {
     const auto deadline = std::chrono::steady_clock::now()
         + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(source.safety.getMotorNotOperationalNotifyDuration()));
+            std::chrono::duration<double>(source.safety.getStartupFailureNotifyDuration()));
     // Repeated so that subscribers matched after the first notification also receive it.
     PeriodicSleeper sleeper(std::chrono::duration<double>(1.0 / source.safety.getEventsFrequency()));
     do {
         event_checker_.checkMotorNotOperationalEvents(source);
+        event_checker_.checkNodesNotDiscoveredEvents(source);
         sleeper.sleep();
     } while (std::chrono::steady_clock::now() < deadline);
 }
