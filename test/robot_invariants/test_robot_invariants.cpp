@@ -158,6 +158,7 @@ protected:
         EXPECT_FALSE(safety.isEmergencyStopActive());
         EXPECT_FALSE(anomalies().lost_references.load());
         EXPECT_FALSE(anomalies().nodes_not_discovered);
+        EXPECT_FALSE(anomalies().nodes_detached);
     }
 
     YAML::Node config;
@@ -663,6 +664,17 @@ TEST_F(RobotSafetyTest, lost_references)
     EXPECT_FALSE(anomalies().lost_references.load());
 }
 
+TEST_F(RobotSafetyTest, nodes_detached)
+{
+    safety.setNodesDetached(true);
+    EXPECT_TRUE(anomalies().nodes_detached);
+    // Latched: false is ignored, only init() clears it.
+    safety.setNodesDetached(false);
+    EXPECT_TRUE(anomalies().nodes_detached);
+    init();
+    EXPECT_FALSE(anomalies().nodes_detached);
+}
+
 // --- Safety state machine and recovery (manageAnomalies) --------------------
 
 TEST_F(RobotSafetyTest, SafetyState_NominalLeavesCommandsUntouched)
@@ -689,6 +701,15 @@ TEST_F(RobotSafetyTest, SafetyState_InvalidCommandEntersEmergencyStopAndZeroesCo
     safety.manageAnomalies(state, commands, kMode);
     EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
     EXPECT_EQ(commands.torque, std::vector<double>(3, 0.0)) << "NaN must not reach the hardware";
+}
+
+TEST_F(RobotSafetyTest, SafetyState_NodesDetachedEntersEmergencyStop)
+{
+    safety.setNodesDetached(true);
+    safety.manageAnomalies(state, commands, kMode);
+    EXPECT_EQ(safety.getSafetyState(), SafetyState::EMERGENCY_STOP);
+    // Zero torque: the frozen measured velocities must not drive a damping torque.
+    EXPECT_EQ(commands.torque, std::vector<double>(3, 0.0));
 }
 
 TEST_F(RobotSafetyTest, SafetyState_LostReferencesEntersDamping)

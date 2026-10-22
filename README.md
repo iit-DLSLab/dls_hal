@@ -153,10 +153,11 @@ The base type does not encode physical units, coordinate frames, timestamps, or 
 | `inf_position_detected`, `inf_velocity_detected`, `inf_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
 | `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
 | `battery_charge_low` | One boolean | `battery_status` is below `percentage_battery_charge_min` |
+| `nodes_detached` | One boolean, latched until `init()` | The low-level interface detected a node detached while running (`RobotSafety::setNodesDetached()`) |
 
 State-limit flags are refreshed by `checkState()`. All per-joint state, limit, and anomaly vectors must have the configured `n_joints` length.
 
-`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop and the fungo button take priority. Missing references select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
+`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop, the fungo button and detached nodes take priority and select zero torque (detached nodes leave the measured state frozen, so damping would apply a constant torque; see [Safety.md](../dls2/doc/Safety.md#nodes-detached-while-running)). Missing references select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
 
 #### `RobotRef`: desired behavior
 

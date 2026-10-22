@@ -187,6 +187,9 @@ public:
     std::vector<bool> battery_charge_low;
     // At least one node expected by the low-level interface was not discovered (RobotSafety::setDiscoveredNodes()).
     bool nodes_not_discovered = false;
+    // The low-level interface detected a node detached while running (RobotSafety::setNodesDetached()).
+    // Latched until init(); it switches the safety state to EMERGENCY_STOP (zero torque).
+    bool nodes_detached = false;
 
     // One-way latch written by the command thread and read by the real-time
     // control thread; no blocking lock is needed.
@@ -248,6 +251,9 @@ public:
 
     // Latching: true sets the anomaly, false is ignored; only init() clears it.
     void setLostReferences(bool lost);
+
+    // Latching: true sets the nodes_detached anomaly, false is ignored; only init() clears it.
+    void setNodesDetached(bool detached);
 
     /**
      * @brief Stores the ids of the nodes (e.g. EtherCAT slaves) discovered by the low-level interface;

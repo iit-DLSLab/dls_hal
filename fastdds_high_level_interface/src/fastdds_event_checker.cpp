@@ -120,6 +120,7 @@ void FastDDSEventChecker::check(const GenericRobotInterface& ri)
     checkMotorFaultEvents(ri);
     checkMotorNotOperationalEvents(ri);
     checkNodesNotDiscoveredEvents(ri);
+    checkNodesDetachedEvents(ri);
     checkBatteryEvents(ri);
     checkEmergencyAndRecoveryEvents(ri);
     checkVirtualEndstopEvents(ri);
@@ -215,6 +216,13 @@ void FastDDSEventChecker::checkNodesNotDiscoveredEvents(const GenericRobotInterf
     for (size_t i = 0; i < discovered.size(); ++i) ids << (i == 0 ? "" : ", ") << discovered[i];
     event_logger_->error("Not all the expected nodes were discovered, discovered nodes: [" + ids.str() + "]",
                          EventID::NODES_NOT_DISCOVERED);
+}
+
+void FastDDSEventChecker::checkNodesDetachedEvents(const GenericRobotInterface& ri)
+{
+    if (ri.safety.anomalies.nodes_detached)
+        event_logger_->error("Nodes detached while running: low-level data not updated, zero torque (emergency stop) is active.",
+                             EventID::NODES_DETACHED);
 }
 
 void FastDDSEventChecker::checkBatteryEvents(const GenericRobotInterface& ri)

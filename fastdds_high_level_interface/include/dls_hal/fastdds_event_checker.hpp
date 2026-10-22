@@ -29,6 +29,7 @@ private:
     void checkEmergencyAndRecoveryEvents(const GenericRobotInterface& source);
     void checkVirtualEndstopEvents(const GenericRobotInterface& source);
     void checkSafetyStateEvents(const GenericRobotInterface& source);
+    void checkNodesDetachedEvents(const GenericRobotInterface& source);
 
     std::shared_ptr<dls::logging::AppLogger> event_logger_;
 };

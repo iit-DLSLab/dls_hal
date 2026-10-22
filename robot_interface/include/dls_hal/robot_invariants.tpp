@@ -82,6 +82,7 @@ void ROBOT_SAFETY_TYPE::init(const YAML::Node& config){
     anomalies.motor_fault_detected.assign(n_joint, false);
     anomalies.motor_not_operational_detected.assign(n_joint, false);
     anomalies.nodes_not_discovered = false;
+    anomalies.nodes_detached = false;
     discovered_nodes.clear();
     anomalies.battery_charge_low.resize(config["general"]["n_batteries"].as<int>(), false);
     anomalies.fungo_pressed.store(false, std::memory_order_relaxed);
@@ -388,6 +389,8 @@ void ROBOT_SAFETY_TYPE::displayAnomalies() const {
         std::cout << "Battery charge is low." << std::endl;
     if (anomalies.nodes_not_discovered)
         std::cout << "Some nodes were not discovered." << std::endl;
+    if (anomalies.nodes_detached)
+        std::cout << "Some nodes were detached." << std::endl;
 }
 
 
@@ -483,8 +486,11 @@ typename ROBOT_SAFETY_TYPE::SafetyState ROBOT_SAFETY_TYPE::getSafetyState() cons
 
 ROBOT_SAFETY_TEMPLATE
 void ROBOT_SAFETY_TYPE::setSafetyState() {
+    // Detached nodes: the measured state is no longer updated, so damping would apply a constant torque
+    // computed from frozen velocities; zero torque (emergency stop recovery) is applied instead.
     if (anomalies.emergency_stop_triggered.load(std::memory_order_relaxed) || 
-        anomalies.fungo_pressed.load(std::memory_order_relaxed)) {
+        anomalies.fungo_pressed.load(std::memory_order_relaxed) ||
+        anomalies.nodes_detached) {
         safety_state = SafetyState::EMERGENCY_STOP;
     }else if (recovery_virtual_joint_limit.anyActive() || recovery_virtual_joint_limit.isDampAllLatched()) {
         safety_state = SafetyState::VIRTUAL_ENDSTOP_ENFORCING;
@@ -517,6 +523,13 @@ void ROBOT_SAFETY_TYPE::setLostReferences(bool lost) {
     // Latched: once lost, references stay lost until init() (HAL restart).
     if (lost)
         anomalies.lost_references.store(true, std::memory_order_relaxed);
+}
+
+ROBOT_SAFETY_TEMPLATE
+void ROBOT_SAFETY_TYPE::setNodesDetached(bool detached) {
+    // Latched: once detached, the nodes stay detached until init() (HAL restart).
+    if (detached)
+        anomalies.nodes_detached = true;
 }
 
 ROBOT_SAFETY_TEMPLATE
