@@ -1,0 +1,10 @@
+{
+  "target": "real",
+  "tests": ["all"],
+  "joint": 0,
+  "hold_kp": 50.0,
+  "hold_kd": 5.0,
+  "estop_command_owner": "pegasus_hal",
+  "interface_config": "/usr/include/pegasus-description/interface_config.yaml",
+  "report_file": "/tmp/hal_anomaly_tester_report.json"
+}

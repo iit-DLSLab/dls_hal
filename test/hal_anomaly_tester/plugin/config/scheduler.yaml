@@ -1,0 +1,4 @@
+# Attributes for SCHED_DEADLINE policy
+period : 10 # ms (100 Hz): rate of the reference and fault injection sent to the HAL
+runtime_factor : 1 # sched_runtime = period * runtime_factor
+deadline_factor : 1 # sched_deadline = period * deadline_factor

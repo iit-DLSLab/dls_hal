@@ -19,6 +19,8 @@ public:
     virtual void checkState();
 
     virtual void checkCommands();
+
+    virtual void manageAnomalies();
     
     TSafety safety; // E-stop, clamping, limit checks
     TRef ref;

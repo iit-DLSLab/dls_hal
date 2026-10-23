@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.28.3)
 project(dls_hal_interface)
+include(CTest)
 
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
@@ -20,6 +21,14 @@ add_subdirectory(hal)
 add_subdirectory(robot_interface)
 add_subdirectory(fastdds_high_level_interface)
 add_subdirectory(test/test_hal)
+
+option(DLS_HAL_BUILD_TESTS "Build the dls_hal unit tests (needs GTest)" ${BUILD_TESTING})
+if(DLS_HAL_BUILD_TESTS)
+  find_package(GTest REQUIRED)
+  enable_testing()
+  add_subdirectory(test/robot_invariants)
+endif()
+add_subdirectory(test/hal_anomaly_tester)
 
 if(DLS_HAL_BUILD_PYTHON_BINDINGS)
   add_subdirectory(python)

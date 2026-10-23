@@ -1,0 +1,24 @@
+#!/bin/bash
+set -eo pipefail
+
+export PYTHONPATH="@HAL_ANOMALY_TESTER_DLS_PYTHON_ROOT@${PYTHONPATH:+:$PYTHONPATH}"
+# Generated Python messages, installed by dls_messages (dls2_py does not search there).
+export HAL_ANOMALY_TESTER_TYPES_PATH="${HAL_ANOMALY_TESTER_TYPES_PATH:-@HAL_ANOMALY_TESTER_DLS_PYTHON_ROOT@/dls_messages}"
+RUNTIME_ROOT="@HAL_ANOMALY_TESTER_RUNTIME_ROOT@"
+
+DLS2_PYTHON="${DLS2_PYTHON:-@HAL_ANOMALY_TESTER_SHARED_PYTHON@}"
+if [ ! -x "$DLS2_PYTHON" ]; then
+    echo "hal_anomaly_tester: missing shared DLS2 interpreter at $DLS2_PYTHON" >&2
+    exit 127
+fi
+
+DLS_SETUP_SCRIPT="@HAL_ANOMALY_TESTER_DLS_PYTHON_ROOT@/dls2_py/scripts/setup.sh"
+if [ -f "$DLS_SETUP_SCRIPT" ]; then
+    # shellcheck disable=SC1090
+    export COLCON_PYTHON_EXECUTABLE="${COLCON_PYTHON_EXECUTABLE:-$DLS2_PYTHON}"
+    export COLCON_TRACE="${COLCON_TRACE:-}"
+    export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"
+    source "$DLS_SETUP_SCRIPT"
+fi
+
+exec "$DLS2_PYTHON" "$RUNTIME_ROOT/python/hal_anomaly_tester.py" "$@"

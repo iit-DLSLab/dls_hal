@@ -88,7 +88,7 @@ TLowLevelControl low_level_control;
 
 The communication adapters therefore receive the entire robot interface as their `Source`. A low-level adapter writes sensor feedback into `state` and reads generated values from `low_level_control.commands`; a high-level adapter writes desired values into `ref` and reads feedback from `state`.
 
-`computeCommands()` checks `safety.e_stop_triggered`. When it is set, `safety.eSTOP()` zeroes command position, velocity, and torque vectors. Otherwise, the configured low-level controller computes commands from `state` and `ref`. Commands are safety-checked after either path.
+`computeCommands()` checks `safety.anomalies.emergency_stop_triggered`. When it is set, `safety.eSTOP()` zeroes command position, velocity, and torque vectors. Otherwise, the configured low-level controller computes commands from `state` and `ref`. Commands are safety-checked after either path.
 
 ## Robot data model
 
@@ -138,11 +138,11 @@ The names express direction, not freshness. A reference is not a sensor reading,
 
 The base type does not encode physical units, coordinate frames, timestamps, or a validity flag. Integrations must keep those conventions consistent with their transports. It also does not make the snapshot atomic: `lli.read()` is expected to finish updating all relevant fields before the later stages of `run()` consume them.
 
-`checkState()` compares position, velocity, torque, motor temperature, and battery values with `safety.limits` and stores per-joint anomaly flags. It also tests position, velocity, and torque for non-finite values. The check records observations; it does not stop the cycle or automatically set `e_stop_triggered`.
+`checkState()` compares position, velocity, torque, motor temperature, and battery values with `safety.limits` and stores per-joint anomaly flags. It also tests position, velocity, and torque for non-finite values. The check records observations; it does not stop the cycle or automatically set `anomalies.emergency_stop_triggered`.
 
 #### Safety anomalies
 
-`ri.safety.anomalies` is a public `RobotSafety::RobotAnomalies` record. It is diagnostic state derived from `ri.state`; it is separate from the measured state, desired reference, generated commands, and `e_stop_triggered`.
+`ri.safety.anomalies` is a public `RobotSafety::RobotAnomalies` record. It contains diagnostic state derived from `ri.state` and the explicit `emergency_stop_triggered` latch; it is separate from the measured state, desired reference, and generated commands.
 
 | Anomaly field | Shape | Set when |
 | --- | --- | --- |
@@ -153,24 +153,11 @@ The base type does not encode physical units, coordinate frames, timestamps, or 
 | `inf_position_detected`, `inf_velocity_detected`, `inf_torque_detected` | `n_joints` booleans each | The corresponding value is non-finite in the current implementation |
 | `motor_overheat_detected` | `n_joints` booleans | Temperature is below `motor_temperature_min` or above `motor_temperature_max` |
 | `battery_charge_low` | One boolean | `battery_status` is below `percentage_battery_charge_min` |
+| `nodes_detached` | One boolean, latched until `init()` | The low-level interface detected a node detached while running (`RobotSafety::setNodesDetached()`) |
 
-All flags start as `false`. `checkState()` overwrites the flags for each inspected joint and overwrites `battery_charge_low`, so anomalies describe the latest check rather than a latched history. A violation that disappears on the next state sample is cleared. The implementation assumes all per-joint state, limit, and anomaly vectors have the configured `n_joints` length.
+State-limit flags are refreshed by `checkState()`. All per-joint state, limit, and anomaly vectors must have the configured `n_joints` length.
 
-Anomalies are informational in the current control path:
-
-- `checkState()` returns `true` regardless of whether it finds a violation.
-- `RobotInterface::checkState()` discards that return value.
-- No anomaly automatically sets `safety.e_stop_triggered`, blocks command computation, or prevents `lli.write()`.
-- Reference and command limit violations are not stored in `RobotAnomalies`.
-
-Consequently, an integration that wants fault escalation must inspect these flags and explicitly set `e_stop_triggered` or implement a derived `RobotSafety::checkState()` policy. There is no aggregate `hasAnomaly()` helper at present.
-
-Several current implementation details are worth noting:
-
-- `checkJointStateNanInf()` combines `std::isnan` and `std::isinf`. Both the `nan_*` and `inf_*` flags therefore receive the same result and cannot distinguish NaN from infinity.
-- Despite its name, `motor_overheat_detected` also becomes true for a temperature below the configured minimum.
-- Acceleration, status words, motor current, contacts, and IMU values are not checked. In particular, `current_max` exists in `RobotLimits` but is not used by `checkState()`.
-- `displayAnomalies()` still refers to obsolete `nan_value_detected` and `inf_value_detected` members. Calling that template method will fail to compile until it is updated to use the six current per-signal flags.
+`manageAnomalies()` checks state and commands, then selects recovery. Emergency stop, the fungo button and detached nodes take priority and select zero torque (detached nodes leave the measured state frozen, so damping would apply a constant torque; see [Safety.md](../dls2/doc/Safety.md#nodes-detached-while-running)). Missing references select damping recovery, which zeroes position and velocity commands and applies torque opposing measured joint velocity.
 
 #### `RobotRef`: desired behavior
 
@@ -205,7 +192,7 @@ ri.low_level_control.commands
 
 Position, velocity, and torque modes copy only their corresponding reference vector. Impedance mode computes the torque vector from measured and desired position/velocity plus feed-forward torque. Fields not written by the active mode keep their previous values, so a low-level adapter should interpret commands according to `low_level_control.control_mode`, not assume every vector was refreshed.
 
-If `safety.e_stop_triggered` is true, computation is bypassed and all three command vectors are filled with zero. `computeCommands()` then calls `checkCommands()`, and the outer `Hal::run()` calls it once more. As with reference checking, the current command check calls `std::clamp` without storing its result, so it does not presently saturate commands.
+If `safety.anomalies.emergency_stop_triggered` is true, computation is bypassed and all three command vectors are filled with zero. `computeCommands()` then calls `checkCommands()`, and the outer `Hal::run()` calls it once more. As with reference checking, the current command check calls `std::clamp` without storing its result, so it does not presently saturate commands.
 
 The generic adapter contract is that `lli.write(ri)` consumes `ri.low_level_control.commands`. The current `AliengoLLI::write()` instead maps `ri.ref.position`, `velocity`, `kp`, `kd`, and `torque` directly into Unitree `LowCmd`. That bypasses computed commands and the E-stop command vectors; it is an implementation exception to fix before treating the generic command path as enforced on Aliengo.
 
@@ -257,6 +244,46 @@ Data leaving the HAL:
 | IMU frame, pose, velocities, accelerations, and covariances | IMU message |
 
 `check()` succeeds only when transport inputs are receiving data and outputs are unique.
+
+`read()` also updates `safety.anomalies.lost_references` from
+`transport.areInputsReceivingData()` on every cycle. Once the control signal has
+been received at least once, the flag is set when any required input times out.
+It is latched: it stays set when the inputs resume, and only `init()` (HAL
+restart) clears it. Configure the maximum
+message age in the YAML passed to `FastDDSHLInterface::init()`:
+
+```yaml
+high_level_interface:
+  references_timeout: 1.0 # seconds; finite and strictly positive
+```
+
+The default is one second. Initialization calls the control-signal reader's
+`setReceivingDataTimeout()` to configure its DDS listener's `is_receiving_data_th`
+(rounded up to microseconds). Configure this before polling the reader. Additional
+readers can use the same setter. The same listener timeout is used by `read()`, `check()` and by the
+missing-reference anomaly. A sample is stale when its age reaches the configured
+timeout; an individual cycle without a new sample does not itself count as a
+timeout. A required input that has never received a sample is missing immediately.
+Inputs marked optional are excluded from this check. In Pegasus hardware this
+setting belongs in `pegasus_hal/config/high_level_config.yaml`; the simulator reads
+it from the robot's `interface_config.yaml` instead.
+
+Event checking/publishing (see above) runs on its own thread, decoupled from the
+control loop, at a configurable rate, read via `RobotSafety::getEventsFrequency()`
+(the same `robot_interface` config section, and the same source/sink split
+between hardware and simulator, as `references_timeout` above):
+
+```yaml
+robot_interface:
+  events_frequency: 10.0 # Hz; finite and strictly positive
+```
+
+The default is 10 Hz.
+
+The flag is updated before command computation and `manageAnomalies()`, which
+selects damping recovery while references are missing, unless emergency stop
+or the fungo button takes priority. The event checker reports this condition
+using `MISSING_INPUT` during state publication.
 
 ## AliengoHal example
 
@@ -409,3 +436,7 @@ if __name__ == "__main__":
 The robot-interface test constructs a `QuadrupedInterface`, loads the example configuration, verifies vector sizes and basic access, and calls `computeCommands()`.
 
 add info specifically for generic robot interface and fastdddshlinterface
+
+### [Virtual joint limit recovery procedure](docs/virtual_joint_limit.md)
+
+Recovery mode specifically designed for avoiding hittinh endstop with high angular velocity and provide robustness in a test setup. 

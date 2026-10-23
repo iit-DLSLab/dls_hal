@@ -2,6 +2,7 @@ set(BUILD_SHARED_LIBS ON)
 
 add_library(robot_interface
     src/robot_invariants.cpp
+    src/recovery_modes.cpp
 )
 # create an alias for the library to be used by other packages
 add_library(${PROJECT_NAME}::robot_interface ALIAS robot_interface)
@@ -18,5 +19,3 @@ hal_install_target(robot_interface)
 install(DIRECTORY config
     DESTINATION ${CMAKE_INSTALL_PREFIX}/share/dls_hal
 )
-
-add_subdirectory(test)

@@ -175,21 +175,20 @@ NB_MODULE(dls_hal, m) {
 
     nb::class_<GenericSafety>(m, "RobotSafety")
         .def(nb::init<>())
-        .def("eSTOP", &GenericSafety::eSTOP)
         .def("checkState", &GenericSafety::checkState)
         .def("checkReference", &GenericSafety::checkReference)
         .def("checkCommands", &GenericSafety::checkCommands)
         .def_prop_rw(
-            "e_stop_triggered",
+            "emergency_stop_triggered",
             [](const GenericSafety& safety) {
-                return safety.e_stop_triggered.load(std::memory_order_relaxed);
+                return safety.anomalies.emergency_stop_triggered.load(std::memory_order_relaxed);
             },
             [](GenericSafety& safety, bool triggered) {
-                safety.e_stop_triggered.store(triggered, std::memory_order_relaxed);
+                safety.anomalies.emergency_stop_triggered.store(triggered, std::memory_order_relaxed);
             })
         // The atomic flag makes RobotAnomalies non-copyable; expose it by reference.
         .def_ro("anomalies", &GenericSafety::anomalies)
-        .def_rw("limits", &GenericSafety::limits);
+        .def_prop_ro("limits", &GenericSafety::getLimits);
 
     nb::enum_<GenericLowLevelControl::CONTROL_MODE>(m, "ControlMode")
         .value("POSITION_CONTROL",

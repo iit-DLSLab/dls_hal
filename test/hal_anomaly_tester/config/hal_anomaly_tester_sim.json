@@ -1,0 +1,12 @@
+{
+  "target": "sim",
+  "tests": [
+    "all"
+  ],
+  "joint": 0,
+  "hold_kp": 50.0,
+  "hold_kd": 5.0,
+  "freeze_base_owner": "gazebo_sim",
+  "interface_config": "/usr/include/pegasus-description/interface_config.yaml",
+  "report_file": "/tmp/hal_anomaly_tester_report.json"
+}

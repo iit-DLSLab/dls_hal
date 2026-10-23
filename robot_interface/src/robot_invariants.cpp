@@ -44,11 +44,14 @@ void RobotState::init(const YAML::Node& config){
     motor_temperature.resize(num_joints, 0.0);
     motors_current.resize(num_joints, 0.0);
     motors_status_word.resize(num_joints, 0);
+    motor_fault_info.resize(num_joints, MotorFaultInfo{});
     names.resize(num_joints, "");
     robot_name = "";
     trunk_temperature = 0.0;
     contacts.resize(config["general"]["n_contacts"].as<int>(), false);
     battery.resize(config["general"]["n_batteries"].as<int>(), RobotBattery());
+    const_motors_status_words.fungo_pressed = -1;
+    const_motors_status_words.operational_mask = 0;
     
     for (size_t i = 0; i < battery.size(); ++i) {
         battery[i].init();
@@ -101,6 +104,7 @@ void RobotLimits::init(const YAML::Node& config){
     current_max.resize(num_joints, 0.0);
     motor_temperature_min.resize(num_joints, -std::numeric_limits<double>::max());
     motor_temperature_max.resize(num_joints, std::numeric_limits<double>::max());
+    joint_inertia.resize(num_joints, 0.0);
     percentage_battery_charge_min = 0.0;
 
     const YAML::Node safety = config["robot_interface"]["safety"];
@@ -117,6 +121,7 @@ void RobotLimits::init(const YAML::Node& config){
         if (limits["current_max"]) current_max = limits["current_max"].as<std::vector<double>>();
         if (limits["motor_temperature_min"]) motor_temperature_min = limits["motor_temperature_min"].as<std::vector<double>>();
         if (limits["motor_temperature_max"]) motor_temperature_max = limits["motor_temperature_max"].as<std::vector<double>>();
+        if (limits["joint_inertia"]) joint_inertia = limits["joint_inertia"].as<std::vector<double>>();
         if (limits["percentage_battery_charge_min"]) percentage_battery_charge_min = limits["percentage_battery_charge_min"].as<double>();
     }
     // Compute velocity, torque, and current minima from their maxima.
