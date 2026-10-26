@@ -1,5 +1,6 @@
 add_library(fastdds_high_level_interface SHARED
     src/fastdds_event_checker.cpp
+    src/friction_commands.cpp
 )
 # add an alias for the library to be used by other packages
 add_library(${PROJECT_NAME}::fastdds_high_level_interface ALIAS fastdds_high_level_interface)
@@ -22,6 +23,10 @@ PUBLIC
     # dls_logging is installed by dls2 but is not part of a CMake export set.
     # Propagate it only within the build tree, not to installed consumers.
     $<BUILD_INTERFACE:dls_logging>
+    # dls_command is not part of a CMake export set either, but the public header
+    # owns a dls::CommandManager, so installed consumers link dls2's installed library.
+    $<BUILD_INTERFACE:dls_command>
+    $<INSTALL_INTERFACE:/usr/lib/dls2/libdls_command.so>
 PRIVATE
     Threads::Threads
 )

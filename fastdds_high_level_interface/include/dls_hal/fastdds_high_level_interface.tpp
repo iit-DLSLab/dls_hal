@@ -4,6 +4,7 @@
 #include "dls_hal/periodic_sleeper.hpp"
 #include "dls2/topics/topics.hpp"
 #include "dls2/domains/domains.hpp"
+#include "dls_hal/friction_commands.hpp"
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -15,6 +16,7 @@
 template <typename RI>
 FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
     : event_checker_(ID)
+    , command_manager_(std::make_unique<dls::CommandManager>(ID))
 {}
 
 template <typename RI>
@@ -24,6 +26,8 @@ FastDDSHLInterface<RI>::~FastDDSHLInterface(){
 
 template <typename RI>
 void FastDDSHLInterface<RI>::stopThreads(){
+    command_manager_.reset(); // the commands' DDS callbacks may otherwise still run
+
     event_thread_.request_stop(); // eventLoggingLoop() exits at most one event period later
     if (event_thread_.joinable())
         event_thread_.join();
@@ -114,6 +118,8 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
         // the source gives its reference vectors the robot's sizes.
         current_input_ = source;
         latest_output_ = source;
+        addCommand(std::make_unique<SetFrictionCompensationCommand>());
+        addCommand(std::make_unique<SetFrictionGainsCommand>(source.low_level_control.k_static_friction.size()));
         std::cout << "Starting ioLoop HAL thread with period " << io_period_.count() << " seconds" << std::endl;
         io_thread_ = std::jthread([this](std::stop_token stop_token) { ioLoop(stop_token); });
     }
@@ -131,12 +137,29 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
 }
 
 template <typename RI>
+template <typename TCommand>
+void FastDDSHLInterface<RI>::addCommand(std::unique_ptr<TCommand> command){
+    static_assert(std::is_base_of_v<HLCommandBase, TCommand>,
+                  "FastDDSHLInterface: commands must derive from HLCommand");
+    static_assert(std::is_base_of_v<typename TCommand::RobotInterface, RI>,
+                  "FastDDSHLInterface: the command's robot interface must be a base of the HAL's one");
+    if (!command_manager_)
+        throw std::logic_error("FastDDSHLInterface: addCommand() called after stopThreads()");
+    command->registerCommand(*command_manager_);
+    commands_.push_back(std::move(command));
+}
+
+template <typename RI>
 bool FastDDSHLInterface<RI>::check(){
     return this->transport.areInputsReceivingData() && this->transport.areOutputsUnique();
 }
 
 template <typename RI>
 void FastDDSHLInterface<RI>::read(RI& source){
+    // Apply the commands received from the console.
+    for (auto& command : commands_)
+        command->applyReceived(source);
+
     // Only the newest reference matters: drain the queue and keep the last one.
     // If nothing arrived since the previous cycle, source keeps its reference.
     bool received = false;

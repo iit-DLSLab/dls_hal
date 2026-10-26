@@ -552,6 +552,10 @@ void ROBOT_LLC_TYPE::init(const YAML::Node& config){
     // Initialization logic for low-level control based on the configuration
     control_mode = static_cast<CONTROL_MODE>(config["robot_interface"]["low_level_control"]["mode"].as<int>());
     commands.init(config);
+    const int num_joints = config["general"]["n_joints"].as<int>();
+    k_static_friction.assign(num_joints, 0.0);
+    k_dynamic_friction.assign(num_joints, 0.0);
+    friction_compensation_enabled = false;
 }
 
 ROBOT_LLC_TEMPLATE
@@ -589,6 +593,27 @@ void ROBOT_LLC_TYPE::impedanceControl(const TState& state, const TRef& ref) {
         commands.torque[id] =   ref.torque[id] 
                                 + ref.kp[id] * (ref.position[id] - state.position[id])
                                 + ref.kd[id] * (ref.velocity[id] - state.velocity[id]);
+        if (friction_compensation_enabled) {
+            const double velocity = state.velocity[id];
+            const double sign = (velocity > 0.0) - (velocity < 0.0);
+            commands.torque[id] += k_static_friction[id] * sign + k_dynamic_friction[id] * velocity;
+        }
+    }
+}
+ROBOT_LLC_TEMPLATE
+void ROBOT_LLC_TYPE::setFrictionCompensation(bool enabled) {
+    friction_compensation_enabled = enabled;
+}
+ROBOT_LLC_TEMPLATE
+void ROBOT_LLC_TYPE::setFrictionGains(int joint, double k_static, double k_dynamic) {
+    const int num_joints = static_cast<int>(k_static_friction.size());
+    if (joint < -1 || joint >= num_joints)
+        return;
+    const int first = joint == -1 ? 0 : joint;
+    const int last = joint == -1 ? num_joints : joint + 1;
+    for (int id = first; id < last; ++id) {
+        k_static_friction[id] = k_static;
+        k_dynamic_friction[id] = k_dynamic;
     }
 }
 ROBOT_LLC_TEMPLATE
