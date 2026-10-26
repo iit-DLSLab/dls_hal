@@ -167,7 +167,10 @@ void FastDDSHLInterface<RI>::ioLoop(std::stop_token stop_token){
 
     while (!stop_token.stop_requested()) {
         readInputs();
-
+        // Non-blocking: if read() is not being called and the queue is full, the
+        // reference is dropped; read() catches up on the next pushed one.
+        inputs_queue_.push(current_input_);
+        
         // publish only the latest state, dropping any older ones that have not yet been published
         while (outputs_queue_.pop(latest_output_)){}
         publishOutputs(latest_output_);
@@ -189,10 +192,6 @@ void FastDDSHLInterface<RI>::readInputs(){
     current_input_.ref.kp = input_control_signal->msg.kp();
     current_input_.ref.kd = input_control_signal->msg.kd();
     current_input_.ref.control_mode = input_control_signal->msg.control_mode();
-
-    // Non-blocking: if read() is not being called and the queue is full, the
-    // reference is dropped; read() catches up on the next pushed one.
-    inputs_queue_.push(current_input_);
 }
 
 template <typename RI>
