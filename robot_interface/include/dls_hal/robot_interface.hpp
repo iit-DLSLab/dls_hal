@@ -11,7 +11,7 @@ public:
     ~RobotInterface();
 
     // computations of commands based on actual state, reference and configuration
-    void computeCommands();
+    virtual void computeCommands();
 
     // function initialization
     virtual bool init(const YAML::Node& config);
