@@ -6,6 +6,7 @@
 #include "dls_hal/fastdds_event_checker.hpp"
 #include "dls2/signal/reader.hpp"
 #include "dls2/signal/writer.hpp"
+#include "dls2/command/command_manager.hpp"
 
 #include "yaml-cpp/yaml.h"
 #include <array>
@@ -69,6 +70,9 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         virtual void publishOutputs(const RI& source);
         // Read the latest inputs from the fastdds transport into current_input_. Runs on the io thread.
         virtual void readInputs();
+        // Copy the inputs filled by readInputs() into the source. Runs on the HAL thread, from read().
+        // Override to copy robot-specific inputs, calling the base for the generic ones.
+        virtual void copyInputs(const RI& input, RI& source);
 
         //! Filled by readInputs() with the received reference; copied from the source
         // in init() so its vectors already have the robot's sizes.
@@ -76,6 +80,10 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
 
         //! Event checker for anomalies and safety events
         FastDDSEventChecker event_checker_;
+
+        //! Commands callable from the dls2 console (owner: the interface ID). Their callbacks run on
+        // the DDS threads: store what they receive (e.g. in atomics) and apply it in readInputs().
+        dls::CommandManager command_manager;
 
         // Reused every write() to collect the virtual joint limit state for output_hal_safety_debug.
         VirtualJointLimitDebug virtual_joint_limit_debug_;

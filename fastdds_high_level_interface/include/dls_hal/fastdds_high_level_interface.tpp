@@ -15,6 +15,7 @@
 template <typename RI>
 FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
     : event_checker_(ID)
+    , command_manager(ID)
 {}
 
 template <typename RI>
@@ -145,14 +146,19 @@ void FastDDSHLInterface<RI>::read(RI& source){
     if (!received)
         return;
 
+    copyInputs(latest_input_, source);
+}
+
+template <typename RI>
+void FastDDSHLInterface<RI>::copyInputs(const RI& input, RI& source){
     // Only the reference and the lost-references flag are filled by ioLoop().
-    source.safety.setLostReferences(latest_input_.safety.anomalies.lost_references.load(std::memory_order_relaxed));
-    source.ref.position = latest_input_.ref.position;
-    source.ref.velocity = latest_input_.ref.velocity;
-    source.ref.torque = latest_input_.ref.torque;
-    source.ref.kp = latest_input_.ref.kp;
-    source.ref.kd = latest_input_.ref.kd;
-    source.ref.control_mode = latest_input_.ref.control_mode;
+    source.safety.setLostReferences(input.safety.anomalies.lost_references.load(std::memory_order_relaxed));
+    source.ref.position = input.ref.position;
+    source.ref.velocity = input.ref.velocity;
+    source.ref.torque = input.ref.torque;
+    source.ref.kp = input.ref.kp;
+    source.ref.kd = input.ref.kd;
+    source.ref.control_mode = input.ref.control_mode;
 }
 
 template <typename RI>

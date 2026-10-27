@@ -22,6 +22,8 @@ PUBLIC
     # dls_logging is installed by dls2 but is not part of a CMake export set.
     # Propagate it only within the build tree, not to installed consumers.
     $<BUILD_INTERFACE:dls_logging>
+    # dls::CommandManager in the public header; like dls_logging, not part of a CMake export set.
+    $<BUILD_INTERFACE:dls_command>
 PRIVATE
     Threads::Threads
 )
