@@ -19,12 +19,24 @@
 #include <boost/lockfree/spsc_queue.hpp>
 
 
+// Robot-interface-agnostic entry points of a high-level interface, for users that only know
+// GenericRobotInterface, e.g. gazebo_sim loading the robot's interfaces at run time.
+// The source must be the RI the high-level interface was built for (std::bad_cast otherwise).
+class RuntimeHLInterface {
+    public:
+        virtual ~RuntimeHLInterface() = default;
+        virtual void initGeneric(GenericRobotInterface& source, const YAML::Node& config) = 0;
+        virtual void readGeneric(GenericRobotInterface& source) = 0;
+        virtual void writeGeneric(const GenericRobotInterface& source) = 0;
+        virtual void writeEventsGeneric(const GenericRobotInterface& source) = 0;
+};
+
 // RI is the robot interface type the HAL runs on. Robot-specific interfaces
 // derived from GenericRobotInterface (e.g. carrying extra data) instantiate this
 // with their own type, so the snapshots exchanged with the io thread keep that
 // extra data instead of being sliced to GenericRobotInterface.
 template <typename RI = GenericRobotInterface>
-class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
+class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport>, public RuntimeHLInterface {
     static_assert(std::is_base_of_v<GenericRobotInterface, RI>,
                   "FastDDSHLInterface: Robot Interface must derive from GenericRobotInterface");
     public:
@@ -44,6 +56,12 @@ class FastDDSHLInterface : public TransportInterface<RI, FastDDSTransport> {
         void writeEvents(const RI& source) override;
 
         bool check() override;
+
+        // RuntimeHLInterface: cast the source to RI and call the methods above.
+        void initGeneric(GenericRobotInterface& source, const YAML::Node& config) override;
+        void readGeneric(GenericRobotInterface& source) override;
+        void writeGeneric(const GenericRobotInterface& source) override;
+        void writeEventsGeneric(const GenericRobotInterface& source) override;
 
         // Optionally override the owned logger before running.
         // The external logger must outlive this interface.

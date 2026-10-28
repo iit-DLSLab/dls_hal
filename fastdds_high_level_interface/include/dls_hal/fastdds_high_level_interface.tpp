@@ -132,6 +132,26 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
 }
 
 template <typename RI>
+void FastDDSHLInterface<RI>::initGeneric(GenericRobotInterface& source, const YAML::Node& config){
+    init(dynamic_cast<RI&>(source), config);
+}
+
+template <typename RI>
+void FastDDSHLInterface<RI>::readGeneric(GenericRobotInterface& source){
+    read(dynamic_cast<RI&>(source));
+}
+
+template <typename RI>
+void FastDDSHLInterface<RI>::writeGeneric(const GenericRobotInterface& source){
+    write(dynamic_cast<const RI&>(source));
+}
+
+template <typename RI>
+void FastDDSHLInterface<RI>::writeEventsGeneric(const GenericRobotInterface& source){
+    writeEvents(dynamic_cast<const RI&>(source));
+}
+
+template <typename RI>
 bool FastDDSHLInterface<RI>::check(){
     return this->transport.areInputsReceivingData() && this->transport.areOutputsUnique();
 }
