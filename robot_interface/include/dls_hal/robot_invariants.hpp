@@ -50,6 +50,7 @@ public:
     std::array<double, 9> angular_velocity_covariance;
     std::array<double, 3> linear_acceleration;
     std::array<double, 9> linear_acceleration_covariance;
+    std::array<double, 3> magnetic_field;
 };
 
 class RobotBattery{

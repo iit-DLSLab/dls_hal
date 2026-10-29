@@ -231,6 +231,7 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
         output_imu->msg.angular_velocity_covariance() = state.imu[i].angular_velocity_covariance;
         output_imu->msg.linear_acceleration() = state.imu[i].linear_acceleration;
         output_imu->msg.linear_acceleration_covariance() = state.imu[i].linear_acceleration_covariance;
+        output_imu->msg.magnetic_field() = state.imu[i].magnetic_field;
     }
     // fill in battery state
     for (size_t i = 0; i < state.battery.size(); ++i) {

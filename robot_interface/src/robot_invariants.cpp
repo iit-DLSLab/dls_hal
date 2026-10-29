@@ -13,6 +13,7 @@ void IMU::init(){
     angular_velocity_covariance.fill(0.0);
     linear_acceleration.fill(0.0);
     linear_acceleration_covariance.fill(0.0);
+    magnetic_field.fill(0.0);
 }
 
 RobotBattery::RobotBattery() {}
