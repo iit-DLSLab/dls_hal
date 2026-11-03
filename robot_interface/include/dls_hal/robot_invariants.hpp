@@ -362,6 +362,25 @@ public:
     CONTROL_MODE control_mode;
 
     TCommands commands;          // Accepted values sent to the hardware.
+
+private:
+    /**
+     * @brief Torque ramp (TORQUE/IMPEDANCE modes): when the torque asked by the controller is more
+     *        than torque_ramp_delta_threshold above the torque sent in the previous cycle (|torque|
+     *        increasing or reversing), the command reaches it linearly in torque_ramp_iterations
+     *        cycles, starting from the torque sent. Small changes of the demand are followed while the
+     *        ramp runs (each cycle covers the gap left over the cycles left); a change larger than the threshold restarts it from the torque sent, unless
+     *        the demand is now within the threshold of the torque sent, which stops it, as does a
+     *        demand dropping to the torque sent. Decreasing |torque| is never ramped.
+     */
+    void applyTorqueRamp();
+
+    std::vector<double> torque_ramp_delta_threshold; // [Nm] jump in torque demand (|torque| increasing) that triggers the ramp
+    int torque_ramp_iterations = 0;                  // 0 disables the ramp
+    std::vector<int> torque_ramp_step;               // cycles since the ramp started, 0 when not ramping
+    std::vector<double> torque_ramp_desired;         // [Nm] torque asked by the controller in the previous cycle
+    std::vector<double> torque_ramp_output;          // [Nm] torque the ramp output in the previous cycle
+    std::vector<double> previous_torque;             // [Nm] torque sent in the previous cycle, safety overrides included
 };
 
 #include "robot_invariants.tpp"

@@ -552,10 +552,38 @@ void ROBOT_LLC_TYPE::init(const YAML::Node& config){
     // Initialization logic for low-level control based on the configuration
     control_mode = static_cast<CONTROL_MODE>(config["robot_interface"]["low_level_control"]["mode"].as<int>());
     commands.init(config);
+    const auto n_joint = config["general"]["n_joints"].as<int>();
+    // Torque ramp trigger, jump in torque demand [Nm]: a scalar for all joints or one value per joint;
+    // absent disables the ramp.
+    const auto threshold_node = config["robot_interface"]["low_level_control"]["torque_ramp_delta_threshold"];
+    torque_ramp_delta_threshold.assign(n_joint, std::numeric_limits<double>::infinity());
+    if (threshold_node) {
+        if (threshold_node.IsScalar()) {
+            torque_ramp_delta_threshold.assign(n_joint, threshold_node.as<double>());
+        } else {
+            torque_ramp_delta_threshold = threshold_node.as<std::vector<double>>();
+            if (torque_ramp_delta_threshold.size() != static_cast<size_t>(n_joint))
+                throw std::invalid_argument("robot_interface.low_level_control.torque_ramp_delta_threshold must be a scalar or have n_joints elements");
+        }
+        for (const double threshold : torque_ramp_delta_threshold) {
+            if (std::isnan(threshold) || threshold < 0.0)
+                throw std::invalid_argument("robot_interface.low_level_control.torque_ramp_delta_threshold must be non-negative (Nm)");
+        }
+    }
+    const auto iterations_node = config["robot_interface"]["low_level_control"]["torque_ramp_iterations"];
+    torque_ramp_iterations = iterations_node ? iterations_node.as<int>() : 0;
+    if (torque_ramp_iterations < 0)
+        throw std::invalid_argument("robot_interface.low_level_control.torque_ramp_iterations must be non-negative (0 disables the ramp)");
+    torque_ramp_step.assign(n_joint, 0);
+    torque_ramp_desired.assign(n_joint, 0.0);
+    torque_ramp_output.assign(n_joint, 0.0);
+    previous_torque.assign(n_joint, 0.0);
 }
 
 ROBOT_LLC_TEMPLATE
 void ROBOT_LLC_TYPE::computeCommands(const TState& state, const TRef& ref){
+    // commands still holds what was sent in the previous cycle, safety overrides included.
+    std::copy(commands.torque.begin(), commands.torque.end(), previous_torque.begin());
     // Implementation for computing commands based on state and reference
     if (control_mode == CONTROL_MODE::POSITION_CONTROL) {
         positionControl(state, ref);
@@ -563,10 +591,55 @@ void ROBOT_LLC_TYPE::computeCommands(const TState& state, const TRef& ref){
         velocityControl(state, ref);
     } else if (control_mode == CONTROL_MODE::TORQUE_CONTROL) {
         torqueControl(state, ref);
+        applyTorqueRamp();
     } else if (control_mode == CONTROL_MODE::IMPEDANCE_CONTROL) {
         impedanceControl(state, ref);
+        applyTorqueRamp();
     } else if (control_mode == CONTROL_MODE::CURRENT_CONTROL) {
         currentControl(state, ref);
+    }
+}
+
+ROBOT_LLC_TEMPLATE
+void ROBOT_LLC_TYPE::applyTorqueRamp() {
+    if (torque_ramp_iterations == 0)
+        return;
+    for (size_t i = 0; i < commands.torque.size(); ++i) {
+        const double desired = commands.torque[i];
+        // NaN/Inf are left to the safety (emergency stop).
+        if (!std::isfinite(desired)) {
+            torque_ramp_step[i] = 0;
+            continue;
+        }
+        const double sent = previous_torque[i];
+        const double threshold = torque_ramp_delta_threshold[i];
+        // Only a demand increasing |torque| from the torque sent (a sign reversal included) is ramped.
+        const bool increasing = std::abs(desired) > std::abs(sent) || desired * sent < 0.0;
+        const bool jump_up = increasing && std::abs(desired - sent) > threshold;
+        // An output overridden by the safety (recovery mode, clamping) ends the ramp.
+        const bool ramping = torque_ramp_step[i] > 0 && sent == torque_ramp_output[i];
+        if (ramping && increasing && std::abs(desired - torque_ramp_desired[i]) <= threshold) {
+            // Small change of the demand: the ramp goes on toward it, without restarting.
+        } else if (jump_up) {
+            // New jump, or the demand changed by more than the threshold during the ramp: (re)start
+            // from the torque sent.
+            torque_ramp_step[i] = 0;
+        } else {
+            // No jump, or the demand dropped to the torque sent (or within the threshold of it)
+            // during the ramp: followed directly.
+            torque_ramp_step[i] = 0;
+            continue;
+        }
+        torque_ramp_desired[i] = desired;
+        // The gap from the torque sent to the current demand is split over the cycles left, so the
+        // demand is reached at cycle torque_ramp_iterations and a change of the demand never makes
+        // the torque step back (linear ramp for a constant demand).
+        const int cycles_left = torque_ramp_iterations - torque_ramp_step[i];
+        commands.torque[i] = sent + (desired - sent) / cycles_left;
+        ++torque_ramp_step[i];
+        torque_ramp_output[i] = commands.torque[i];
+        if (torque_ramp_step[i] >= torque_ramp_iterations)
+            torque_ramp_step[i] = 0; // demand reached
     }
 }
 
