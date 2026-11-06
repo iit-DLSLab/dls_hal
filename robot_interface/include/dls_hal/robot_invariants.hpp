@@ -96,6 +96,7 @@ public:
     std::vector<uint32_t> motors_status_word;
     std::vector<MotorFaultInfo> motor_fault_info; // null-terminated fault description reported by each motor
     std::vector<double> motor_temperature;
+    std::vector<double> board_temperature; // motor driver board temperature
     std::vector<double> motors_current;
     std::vector<bool> contacts;
     std::vector<IMU> imu;
