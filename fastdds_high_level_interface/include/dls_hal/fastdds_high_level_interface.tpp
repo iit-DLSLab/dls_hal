@@ -14,7 +14,8 @@
 
 template <typename RI>
 FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
-    : event_checker_(ID)
+    : TransportInterface<RI, FastDDSTransport>(ID) // DDS participant named ID
+    , event_checker_(ID)
     , command_manager(ID)
 {}
 
