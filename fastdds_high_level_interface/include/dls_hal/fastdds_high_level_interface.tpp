@@ -240,6 +240,7 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
     for (size_t i = 0; i < state.battery.size(); ++i) {
         output_battery_status->msg.id() = state.battery[i].id;
         output_battery_status->msg.voltage() = state.battery[i].v_batt;
+        output_battery_status->msg.current() = state.battery[i].i_load;
         output_battery_status->msg.temperature() = state.battery[i].temp_batt;
         output_battery_status->msg.state_of_charge() = state.battery[i].charge_percentage;
         output_battery_status->msg.status() = state.battery[i].status;
