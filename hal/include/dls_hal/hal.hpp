@@ -9,6 +9,8 @@ template <typename LLI, typename RI, typename HLI>
 class Hal : public HalBase{
 public:
     Hal();
+    // hli_id is forwarded to the High-Level Interface constructor (its ID / DDS participant name).
+    explicit Hal(const std::string& hli_id);
     ~Hal();
 
     void init(   const YAML::Node& robot_interface_config,
