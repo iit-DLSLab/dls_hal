@@ -584,12 +584,15 @@ void ROBOT_LLC_TYPE::torqueControl(const TState& state, const TRef& ref) {
 }
 ROBOT_LLC_TEMPLATE
 void ROBOT_LLC_TYPE::impedanceControl(const TState& state, const TRef& ref) {
-    // Impedance control logic (to be implemented)
+    // Impedance control logic
     for (int id = 0; id < state.position.size(); ++id) {
         commands.torque[id] =   ref.torque[id] 
                                 + ref.kp[id] * (ref.position[id] - state.position[id])
                                 + ref.kd[id] * (ref.velocity[id] - state.velocity[id]);
     }
+    // fill position and velocity commands with the reference values for hal feedback
+    commands.position = ref.position;
+    commands.velocity = ref.velocity;
 }
 ROBOT_LLC_TEMPLATE
 void ROBOT_LLC_TYPE::currentControl(const TState& state, const TRef& ref) { 
