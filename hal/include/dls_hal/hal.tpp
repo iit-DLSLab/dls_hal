@@ -14,6 +14,14 @@ HAL_TYPE::Hal()
     //TODO check base class of LLI, RI, HLI to ensure they are derived from the correct base classes
 }
 
+HAL_TEMPLATE
+HAL_TYPE::Hal(const std::string& hli_id)
+    : lli()
+    , ri()
+    , hli(hli_id)
+{
+}
+
 template <typename LLI, typename RI, typename HLI>
 Hal<LLI, RI, HLI>::~Hal()
 {}

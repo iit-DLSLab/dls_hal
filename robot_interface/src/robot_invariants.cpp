@@ -13,6 +13,7 @@ void IMU::init(){
     angular_velocity_covariance.fill(0.0);
     linear_acceleration.fill(0.0);
     linear_acceleration_covariance.fill(0.0);
+    magnetic_field.fill(0.0);
 }
 
 RobotBattery::RobotBattery() {}
@@ -42,6 +43,7 @@ void RobotState::init(const YAML::Node& config){
     acceleration.resize(num_joints, 0.0);
     torque.resize(num_joints, 0.0);
     motor_temperature.resize(num_joints, 0.0);
+    board_temperature.resize(num_joints, 0.0);
     motors_current.resize(num_joints, 0.0);
     motors_status_word.resize(num_joints, 0);
     motor_fault_info.resize(num_joints, MotorFaultInfo{});

@@ -14,7 +14,8 @@
 
 template <typename RI>
 FastDDSHLInterface<RI>::FastDDSHLInterface(const std::string& ID)
-    : event_checker_(ID)
+    : TransportInterface<RI, FastDDSTransport>(ID) // DDS participant named ID
+    , event_checker_(ID)
     , command_manager(ID)
 {}
 
@@ -98,6 +99,7 @@ void FastDDSHLInterface<RI>::init(RI& source, const YAML::Node& config){
     output_blind_state->msg.motors_status_word().resize(source.state.motors_status_word.size(), 0);
     output_blind_state->msg.motors_fault_info().resize(source.state.motor_fault_info.size(), "");
     output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
+    output_blind_state->msg.board_temperature().resize(source.state.board_temperature.size(), 0.0);
 
     output_hal_commands_feedback->msg = input_control_signal->msg;
 
@@ -220,6 +222,7 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
         output_blind_state->msg.motors_fault_info()[i].assign(fault_info.data(), strnlen(fault_info.data(), fault_info.size()));
     }
     output_blind_state->msg.trunk_temperature() = source.state.trunk_temperature;
+    output_blind_state->msg.board_temperature() = state.board_temperature;
 
     // fill in imu state
     for(size_t i = 0; i < state.imu.size(); ++i){
@@ -231,11 +234,13 @@ void FastDDSHLInterface<RI>::publishOutputs(const RI& source){
         output_imu->msg.angular_velocity_covariance() = state.imu[i].angular_velocity_covariance;
         output_imu->msg.linear_acceleration() = state.imu[i].linear_acceleration;
         output_imu->msg.linear_acceleration_covariance() = state.imu[i].linear_acceleration_covariance;
+        output_imu->msg.magnetic_field() = state.imu[i].magnetic_field;
     }
     // fill in battery state
     for (size_t i = 0; i < state.battery.size(); ++i) {
         output_battery_status->msg.id() = state.battery[i].id;
         output_battery_status->msg.voltage() = state.battery[i].v_batt;
+        output_battery_status->msg.current() = state.battery[i].i_load;
         output_battery_status->msg.temperature() = state.battery[i].temp_batt;
         output_battery_status->msg.state_of_charge() = state.battery[i].charge_percentage;
         output_battery_status->msg.status() = state.battery[i].status;

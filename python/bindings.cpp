@@ -115,6 +115,7 @@ NB_MODULE(dls_hal, m) {
         .def_rw("torque", &RobotState::torque)
         .def_rw("motors_status_word", &RobotState::motors_status_word)
         .def_rw("motor_temperature", &RobotState::motor_temperature)
+        .def_rw("board_temperature", &RobotState::board_temperature)
         .def_rw("motors_current", &RobotState::motors_current)
         .def_rw("contacts", &RobotState::contacts)
         .def_rw("imu", &RobotState::imu)
