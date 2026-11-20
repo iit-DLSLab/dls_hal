@@ -499,6 +499,7 @@ void ROBOT_SAFETY_TYPE::setSafetyState() {
     } else {
         safety_state = SafetyState::NOMINAL;
     }
+    std::cout << static_cast<int>(safety_state) << std::endl;
 }
 
 ROBOT_SAFETY_TEMPLATE
